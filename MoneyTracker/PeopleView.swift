@@ -4,18 +4,11 @@ import SwiftData
 struct PeopleView: View {
     @Environment(\.modelContext) private var ctx
     @Query(sort: \Debt.date, order: .reverse) private var debts: [Debt]
-    @Query(sort: \Txn.date, order: .reverse) private var txs: [Txn]
-    @Query(sort: \Account.sortIndex) private var accounts: [Account]
-    @Query private var cats: [TxCategory]
 
     @State private var showAddDebt = false
     @State private var repayDebt: Debt?
 
     private var activeDebts: [Debt] { debts.filter { !$0.settled } }
-    private var pendingSplits: [Txn] { txs.filter { $0.isSplit && !$0.splitSettled && $0.type == "expense" } }
-    private var totalOwedToMe: Double {
-        pendingSplits.reduce(0) { $0 + ($1.amount - $1.personalAmount) }
-    }
 
     var body: some View {
         NavigationStack {
@@ -23,11 +16,6 @@ struct PeopleView: View {
                 if !activeDebts.isEmpty {
                     Section("You owe · \(Fmt.money(activeDebts.reduce(0) { $0 + ($1.totalAmount - $1.paidBack) }))") {
                         ForEach(activeDebts) { d in debtRow(d) }
-                    }
-                }
-                if !pendingSplits.isEmpty {
-                    Section("Others owe you · \(Fmt.money(totalOwedToMe))") {
-                        ForEach(pendingSplits) { t in splitRow(t) }
                     }
                 }
                 if !debts.filter(\.settled).isEmpty {
@@ -42,9 +30,9 @@ struct PeopleView: View {
                         }
                     }
                 }
-                if debts.isEmpty && pendingSplits.isEmpty {
+                if debts.isEmpty {
                     ContentUnavailableView("No debts or splits", systemImage: "person.2",
-                                           description: Text("Borrowed money and WG splits show up here."))
+                                           description: Text("Money you borrowed shows up here. Log repayments as you go."))
                         .listRowBackground(Color.clear)
                 }
             }
@@ -89,26 +77,6 @@ struct PeopleView: View {
         }
     }
 
-    private func splitRow(_ t: Txn) -> some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(t.merchant).font(.subheadline.weight(.semibold))
-                Text("\(t.date) · \(t.splitPeople) people").font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("+" + Fmt.money(t.amount - t.personalAmount))
-                .font(.subheadline.weight(.bold)).foregroundStyle(.green).monospacedDigit()
-            Button("Settle") {
-                ctx.insert(Txn(type: "income", amount: t.amount - t.personalAmount,
-                               merchant: "WG Settlement", categoryId: "other",
-                               accountId: t.accountId, notes: "Settlement for \(t.merchant)",
-                               date: Fmt.today()))
-                t.splitSettled = true
-                try? ctx.save(); Haptic.success()
-            }
-            .buttonStyle(.bordered).controlSize(.small)
-        }
-    }
 }
 
 struct DebtForm: View {
@@ -124,7 +92,7 @@ struct DebtForm: View {
         NavigationStack {
             Form {
                 TextField("Person's name", text: $person)
-                HStack { Text("€").foregroundStyle(.secondary)
+                HStack { Text(Fmt.currencySymbol).foregroundStyle(.secondary)
                     TextField("Amount borrowed", text: $amount).keyboardType(.decimalPad) }
                 Picker("Received into account", selection: $receivedIn) {
                     Text("None (cash / outside)").tag("")
@@ -138,12 +106,12 @@ struct DebtForm: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        guard let v = Double(amount.replacingOccurrences(of: ",", with: ".")), v > 0, !person.isEmpty else { return }
+                        guard let v = Fmt.amount(amount), v > 0, !person.isEmpty else { return }
                         ctx.insert(Debt(personName: person, totalAmount: v, date: Fmt.today(),
                                         details: details, receivedInAccount: receivedIn))
                         if !receivedIn.isEmpty {
                             ctx.insert(Txn(type: "income", amount: v, merchant: "Borrowed from \(person)",
-                                           categoryId: "other", accountId: receivedIn,
+                                           categoryId: "debt", accountId: receivedIn,
                                            notes: "Debt: \(details.isEmpty ? person : details)", date: Fmt.today()))
                         }
                         try? ctx.save(); Haptic.success(); dismiss()
@@ -167,7 +135,7 @@ struct RepayForm: View {
         NavigationStack {
             Form {
                 LabeledContent("Open", value: Fmt.money(debt.totalAmount - debt.paidBack))
-                HStack { Text("€").foregroundStyle(.secondary)
+                HStack { Text(Fmt.currencySymbol).foregroundStyle(.secondary)
                     TextField("Repayment amount", text: $amount).keyboardType(.decimalPad) }
                 Picker("From account", selection: $fromAccount) {
                     Text("Select…").tag("")
@@ -180,11 +148,11 @@ struct RepayForm: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Log") {
-                        guard let req = Double(amount.replacingOccurrences(of: ",", with: ".")), req > 0,
+                        guard let req = Fmt.amount(amount), req > 0,
                               !fromAccount.isEmpty else { return }
                         let v = min(req, debt.totalAmount - debt.paidBack)   // cap at remaining
                         ctx.insert(Txn(type: "expense", amount: v, merchant: "Repayment → \(debt.personName)",
-                                       categoryId: "other", accountId: fromAccount,
+                                       categoryId: "debt", accountId: fromAccount,
                                        notes: "Debt repayment", date: Fmt.today()))
                         debt.paidBack += v
                         if debt.paidBack >= debt.totalAmount { debt.settled = true }

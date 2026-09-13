@@ -14,46 +14,41 @@ struct ActivityView: View {
     @State private var editTx: Txn?
     @State private var showAdd = false
 
-    private var filtered: [Txn] {
-        txs.filter { t in
+    var body: some View {
+        let rows = Ledger.build(accounts: accounts, txs: txs).rows.filter { t in
             if !search.isEmpty && !t.merchant.localizedCaseInsensitiveContains(search) { return false }
             if !fType.isEmpty && t.type != fType { return false }
             if !fCat.isEmpty && t.categoryId != fCat { return false }
-            if !fAcc.isEmpty && t.accountId != fAcc { return false }
+            if !fAcc.isEmpty && t.accountId != fAcc && t.toAccountId != fAcc { return false }
             return true
         }
-    }
+        let groups = Dictionary(grouping: rows, by: \.date)
+        let days = groups.keys.sorted(by: >)
 
-    private var grouped: [(String, [Txn])] {
-        let g = Dictionary(grouping: filtered, by: \.date)
-        return g.keys.sorted(by: >).map { ($0, g[$0]!) }
-    }
-
-    var body: some View {
-        NavigationStack {
+        return NavigationStack {
             List {
                 Section {
                     Picker("Type", selection: $fType) {
                         Text("All").tag("")
                         Text("Income").tag("income")
-                        Text("Expenses").tag("expense")
+                        Text("Received").tag("credit")
+                        Text("Spent").tag("expense")
                         Text("Transfers").tag("transfer")
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
                 }
-                ForEach(grouped, id: \.0) { date, items in
+                ForEach(days, id: \.self) { date in
+                    let items = groups[date] ?? []
                     Section {
-                        ForEach(items) { t in
-                            TxRow(t: t, cats: cats, accounts: accounts)
+                        ForEach(items) { r in
+                            TxRow(r: r, cats: cats, accounts: accounts)
                                 .contentShape(Rectangle())
-                                .onTapGesture { editTx = t }
+                                .onTapGesture { editTx = txs.first { $0.id == r.id } }
                                 .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        ctx.delete(t); try? ctx.save(); Haptic.warning()
-                                    } label: { Label("Delete", systemImage: "trash") }
-                                    Button { editTx = t } label: { Label("Edit", systemImage: "pencil") }
+                                    Button(role: .destructive) { delete(r.id) } label: { Label("Delete", systemImage: "trash") }
+                                    Button { editTx = txs.first { $0.id == r.id } } label: { Label("Edit", systemImage: "pencil") }
                                         .tint(.blue)
                                 }
                         }
@@ -61,12 +56,12 @@ struct ActivityView: View {
                         HStack {
                             Text(Fmt.prettyDay(date))
                             Spacer()
-                            let daySpend = items.filter { $0.type == "expense" }.reduce(0) { $0 + $1.personalAmount }
-                            if daySpend > 0 { Text("−" + Fmt.money(daySpend)).monospacedDigit() }
+                            let spent = items.filter { $0.type == "expense" }.reduce(0) { $0 + $1.personal }
+                            if spent > 0 { Text("−" + Fmt.money(spent)).monospacedDigit() }
                         }
                     }
                 }
-                if filtered.isEmpty {
+                if rows.isEmpty {
                     ContentUnavailableView("No transactions found", systemImage: "tray")
                         .listRowBackground(Color.clear)
                 }
@@ -78,7 +73,7 @@ struct ActivityView: View {
                     Menu {
                         Picker("Category", selection: $fCat) {
                             Text("All categories").tag("")
-                            ForEach(cats) { c in Text("\(c.icon) \(c.label)").tag(c.id) }
+                            ForEach(cats) { c in Text(c.label).tag(c.id) }
                         }
                         Picker("Account", selection: $fAcc) {
                             Text("All accounts").tag("")
@@ -96,5 +91,11 @@ struct ActivityView: View {
             .sheet(item: $editTx) { TransactionForm(existing: $0) }
             .sheet(isPresented: $showAdd) { TransactionForm(existing: nil) }
         }
+    }
+
+    private func delete(_ id: String) {
+        guard let t = txs.first(where: { $0.id == id }) else { return }
+        ctx.delete(t); LearningStore.shared.forget(id)
+        try? ctx.save(); Haptic.warning()
     }
 }

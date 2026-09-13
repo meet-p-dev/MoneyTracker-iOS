@@ -41,7 +41,7 @@ struct GoalsView: View {
         let pct = g.targetAmount > 0 ? min(g.savedAmount / g.targetAmount, 1) : 0
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Text(g.icon).font(.title2)
+                GoalGlyph(goal: g, size: 20)
                     .frame(width: 44, height: 44)
                     .background(Color(hex: g.colorHex).opacity(0.18), in: RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading) {
@@ -73,19 +73,18 @@ struct GoalForm: View {
     @State private var name = ""
     @State private var target = ""
     @State private var saved = ""
-    @State private var icon = "🎯"
-    private let icons = ["🎯","✈️","🏠","🎓","🚗","💻","🎮","💍","🏖️","🎁","💊","🐾"]
+    @State private var sym = "goal"
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Goal name", text: $name)
-                HStack { Text("€").foregroundStyle(.secondary)
+                HStack { Text(Fmt.currencySymbol).foregroundStyle(.secondary)
                     TextField("Target amount", text: $target).keyboardType(.decimalPad) }
-                HStack { Text("€").foregroundStyle(.secondary)
+                HStack { Text(Fmt.currencySymbol).foregroundStyle(.secondary)
                     TextField("Already saved", text: $saved).keyboardType(.decimalPad) }
-                Picker("Icon", selection: $icon) {
-                    ForEach(icons, id: \.self) { Text($0).tag($0) }
+                Picker("Symbol", selection: $sym) {
+                    ForEach(Symbols.goalKeys, id: \.self) { k in Image(systemName: Symbols.name(k) ?? "target").tag(k) }
                 }
                 .pickerStyle(.menu)
             }
@@ -95,12 +94,12 @@ struct GoalForm: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        guard let t = Double(target.replacingOccurrences(of: ",", with: ".")), t > 0, !name.isEmpty else { return }
-                        let s = Double(saved.replacingOccurrences(of: ",", with: ".")) ?? 0
+                        guard let t = Fmt.amount(target), t > 0, !name.isEmpty else { return }
+                        let s = Fmt.amount(saved) ?? 0
                         if let g = existing {
-                            g.name = name; g.targetAmount = t; g.savedAmount = s; g.icon = icon
+                            g.name = name; g.targetAmount = t; g.savedAmount = s; g.sym = sym
                         } else {
-                            ctx.insert(Goal(name: name, targetAmount: t, savedAmount: s, icon: icon))
+                            ctx.insert(Goal(name: name, targetAmount: t, savedAmount: s, sym: sym))
                         }
                         try? ctx.save(); Haptic.success(); dismiss()
                     }
@@ -108,7 +107,7 @@ struct GoalForm: View {
             }
             .onAppear {
                 if let g = existing {
-                    name = g.name; target = String(g.targetAmount); saved = String(g.savedAmount); icon = g.icon
+                    name = g.name; target = Fmt.editable(g.targetAmount); saved = Fmt.editable(g.savedAmount); sym = g.sym.isEmpty ? BackupService.goalSym(forEmoji: g.icon) : g.sym
                 }
             }
         }

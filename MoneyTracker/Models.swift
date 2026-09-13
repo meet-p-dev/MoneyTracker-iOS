@@ -1,20 +1,46 @@
 import Foundation
 import SwiftData
 
-// String ids + "yyyy-MM-dd" date strings everywhere — identical to the PWA data,
-// so backup import/export is lossless in both directions.
+// String ids + "yyyy-MM-dd" date strings everywhere — identical to the web app's data, so
+// backup import/export is lossless in both directions. Properties added since the first
+// version carry default values, so existing installs migrate automatically.
 
 @Model
 final class Account {
     @Attribute(.unique) var id: String
     var name: String
     var colorHex: String
-    var initialBalance: Double
+    var initialBalance: Double          // web `ib` — cards are negative when you owe
     var sortIndex: Int
+    // web V9.4–V11.8: credit cards, starting-balance date, bank-synced flag
+    var kind: String = "cash"           // "cash" | "credit"
+    var creditLimit: Double = 0
+    var statementDay: Int = 1
+    var dueDay: Int = 1
+    var apr: Double = 0
+    var payFromId: String = ""
+    var autopay: Bool = false
+    var billPayee: String = ""
+    var ibDate: String = ""             // "" = count every transaction
+    var lastAutopay: String = ""
+    var isBank: Bool = false
 
     init(id: String = UUID().uuidString, name: String, colorHex: String, initialBalance: Double = 0, sortIndex: Int = 0) {
         self.id = id; self.name = name; self.colorHex = colorHex
         self.initialBalance = initialBalance; self.sortIndex = sortIndex
+    }
+
+    var isCredit: Bool { kind == "credit" }
+    var isSynced: Bool { isBank || id.hasPrefix("sb-") }
+    var snap: AccSnap {
+        AccSnap(id: id, name: name, colorHex: colorHex, ib: initialBalance, kind: kind, creditLimit: creditLimit,
+                statementDay: statementDay, dueDay: dueDay, apr: apr, payFromId: payFromId, autopay: autopay,
+                billPayee: billPayee, ibDate: ibDate, isBank: isSynced)
+    }
+    func apply(_ s: AccSnap) {
+        name = s.name; colorHex = s.colorHex; initialBalance = s.ib; kind = s.kind
+        creditLimit = s.creditLimit; statementDay = s.statementDay; dueDay = s.dueDay; apr = s.apr
+        payFromId = s.payFromId; autopay = s.autopay; billPayee = s.billPayee; ibDate = s.ibDate; isBank = s.isBank
     }
 }
 
@@ -22,18 +48,19 @@ final class Account {
 final class TxCategory {
     @Attribute(.unique) var id: String
     var label: String
-    var icon: String
+    var icon: String                    // emoji — custom categories, and fallback
     var colorHex: String
+    var sym: String = ""                // web symbol key (built-in categories)
 
-    init(id: String = UUID().uuidString, label: String, icon: String, colorHex: String) {
-        self.id = id; self.label = label; self.icon = icon; self.colorHex = colorHex
+    init(id: String = UUID().uuidString, label: String, icon: String, colorHex: String, sym: String = "") {
+        self.id = id; self.label = label; self.icon = icon; self.colorHex = colorHex; self.sym = sym
     }
 }
 
 @Model
 final class Txn {
     @Attribute(.unique) var id: String
-    var type: String          // "expense" | "income" | "transfer"
+    var type: String          // income | credit (Received) | expense | debit (Sent out) | transfer
     var amount: Double
     var merchant: String
     var categoryId: String
@@ -41,9 +68,11 @@ final class Txn {
     var toAccountId: String   // transfers only
     var notes: String
     var date: String          // "yyyy-MM-dd"
+    // Legacy WG-split fields: converted to "My share" on first launch, kept for old stores.
     var isSplit: Bool
     var splitPeople: Int
     var splitSettled: Bool
+    var isBank: Bool = false  // synced from the bank (web `_bank`)
 
     init(id: String = UUID().uuidString, type: String, amount: Double, merchant: String,
          categoryId: String, accountId: String, toAccountId: String = "", notes: String = "",
@@ -54,9 +83,11 @@ final class Txn {
         self.splitPeople = splitPeople; self.splitSettled = splitSettled
     }
 
-    // your share of a split expense — mirrors personalAmt() in the PWA
-    var personalAmount: Double {
-        isSplit && splitPeople > 1 ? amount / Double(splitPeople) : amount
+    var isSynced: Bool { isBank || id.hasPrefix("sb-") }
+    var row: Row {
+        Row(id: id, type: type, rawType: type, amount: amount, merchant: merchant, categoryId: categoryId,
+            rawCategoryId: categoryId, accountId: accountId, toAccountId: toAccountId, notes: notes,
+            date: date, isBank: isSynced)
     }
 }
 
@@ -68,14 +99,17 @@ final class Goal {
     var savedAmount: Double
     var icon: String
     var colorHex: String
+    var sym: String = ""                // web symbol key; emoji goals are upgraded on display
 
     init(id: String = UUID().uuidString, name: String, targetAmount: Double, savedAmount: Double = 0,
-         icon: String = "🎯", colorHex: String = "#007aff") {
+         icon: String = "🎯", colorHex: String = "#007aff", sym: String = "goal") {
         self.id = id; self.name = name; self.targetAmount = targetAmount
-        self.savedAmount = savedAmount; self.icon = icon; self.colorHex = colorHex
+        self.savedAmount = savedAmount; self.icon = icon; self.colorHex = colorHex; self.sym = sym
     }
 }
 
+// Retired (web V9.5): bank sync imports the real recurring payments. Kept only so existing
+// stores open; its rows are deleted by the one-time migration.
 @Model
 final class RecurringTxn {
     @Attribute(.unique) var id: String
@@ -86,7 +120,7 @@ final class RecurringTxn {
     var accountId: String
     var dayOfMonth: Int
     var active: Bool
-    var lastTriggered: String  // "yyyy-MM-dd" or ""
+    var lastTriggered: String
     var notes: String
 
     init(id: String = UUID().uuidString, merchant: String, amount: Double, type: String = "expense",
@@ -126,5 +160,13 @@ final class Budget {
 
     init(categoryId: String, limit: Double) {
         self.categoryId = categoryId; self.limit = limit
+    }
+}
+
+extension Ledger {
+    /// The effective ledger for the current data + your learning (decisions, My share).
+    static func build(accounts: [Account], txs: [Txn], learning: LearningStore = .shared) -> Ledger {
+        Ledger(accounts: accounts.map(\.snap), raw: txs.map(\.row),
+               decisions: learning.txDecisions, shares: learning.shareOverrides)
     }
 }

@@ -5,11 +5,13 @@ import Charts
 struct AnalyticsView: View {
     @Query private var cats: [TxCategory]
     @Query(sort: \Txn.date, order: .reverse) private var txs: [Txn]
+    @Query(sort: \Account.sortIndex) private var accounts: [Account]
     @Query private var budgets: [Budget]
     @State private var view = "spend"
 
     var body: some View {
-        NavigationStack {
+        let L = Ledger.build(accounts: accounts, txs: txs)
+        return NavigationStack {
             List {
                 Section {
                     Picker("View", selection: $view) {
@@ -22,9 +24,9 @@ struct AnalyticsView: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
                 }
                 switch view {
-                case "budgets": BudgetsSection(cats: cats, txs: txs, budgets: budgets)
-                case "trends": TrendsSection(txs: txs)
-                default: SpendingSection(cats: cats, txs: txs)
+                case "budgets": BudgetsSection(cats: cats, rows: L.rows, budgets: budgets)
+                case "trends": TrendsSection(ledger: L)
+                default: SpendingSection(cats: cats, rows: L.rows)
                 }
             }
             .navigationTitle("Analytics")
@@ -35,13 +37,13 @@ struct AnalyticsView: View {
 // ── Spending: donut + per-category breakdown ──
 struct SpendingSection: View {
     let cats: [TxCategory]
-    let txs: [Txn]
+    let rows: [Row]
 
     private var monthKey: String { Fmt.monthKey() }
     private var byCat: [(cat: TxCategory, total: Double)] {
         cats.compactMap { c in
-            let total = txs.filter { $0.type == "expense" && $0.categoryId == c.id && $0.date.hasPrefix(monthKey) }
-                .reduce(0) { $0 + $1.personalAmount }
+            let total = rows.filter { $0.type == "expense" && $0.categoryId == c.id && $0.date.hasPrefix(monthKey) }
+                .reduce(0) { $0 + $1.personal }
             return total > 0 ? (c, total) : nil
         }
         .sorted { $0.total > $1.total }
@@ -70,10 +72,10 @@ struct SpendingSection: View {
 
                 ForEach(byCat, id: \.cat.id) { item in
                     NavigationLink {
-                        CategoryDetail(cat: item.cat, txs: txs, monthKey: monthKey)
+                        CategoryDetail(cat: item.cat, rows: rows, monthKey: monthKey)
                     } label: {
                         HStack {
-                            Text("\(item.cat.icon) \(item.cat.label)")
+                            Label { Text(item.cat.label) } icon: { CatGlyph(cat: item.cat) }
                             Spacer()
                             Text(Fmt.money(item.total)).monospacedDigit().fontWeight(.semibold)
                         }
@@ -87,13 +89,13 @@ struct SpendingSection: View {
 // drill-down: merchants within a category (your "tap → see what's inside" rule)
 struct CategoryDetail: View {
     let cat: TxCategory
-    let txs: [Txn]
+    let rows: [Row]
     let monthKey: String
 
     private var byMerchant: [(String, Double, Int)] {
-        let rel = txs.filter { $0.type == "expense" && $0.categoryId == cat.id && $0.date.hasPrefix(monthKey) }
+        let rel = rows.filter { $0.type == "expense" && $0.categoryId == cat.id && $0.date.hasPrefix(monthKey) }
         let g = Dictionary(grouping: rel) { $0.merchant.isEmpty ? "Unknown" : $0.merchant }
-        return g.map { ($0.key, $0.value.reduce(0) { $0 + $1.personalAmount }, $0.value.count) }
+        return g.map { ($0.key, $0.value.reduce(0) { $0 + $1.personal }, $0.value.count) }
             .sorted { $0.1 > $1.1 }
     }
 
@@ -110,7 +112,7 @@ struct CategoryDetail: View {
                 }
             }
         }
-        .navigationTitle("\(cat.icon) \(cat.label)")
+        .navigationTitle(cat.label)
     }
 }
 
@@ -118,14 +120,14 @@ struct CategoryDetail: View {
 struct BudgetsSection: View {
     @Environment(\.modelContext) private var ctx
     let cats: [TxCategory]
-    let txs: [Txn]
+    let rows: [Row]
     let budgets: [Budget]
 
     private var monthKey: String { Fmt.monthKey() }
 
     private func spent(_ catId: String) -> Double {
-        txs.filter { $0.type == "expense" && $0.categoryId == catId && $0.date.hasPrefix(monthKey) }
-            .reduce(0) { $0 + $1.personalAmount }
+        rows.filter { $0.type == "expense" && $0.categoryId == catId && $0.date.hasPrefix(monthKey) }
+            .reduce(0) { $0 + $1.personal }
     }
 
     var body: some View {
@@ -144,12 +146,12 @@ struct BudgetsSection: View {
             }
         }
         Section("Monthly limit per category") {
-            ForEach(cats.filter { c in !["salary", "freelance"].contains(c.id) }) { c in
+            ForEach(cats.filter { c in !["salary", "freelance", "transfer", "reimburse", "refund"].contains(c.id) }) { c in
                 let b = budgets.first { $0.categoryId == c.id }
                 let sp = spent(c.id)
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("\(c.icon) \(c.label)")
+                        Label { Text(c.label) } icon: { CatGlyph(cat: c) }
                         Spacer()
                         TextField("—", value: Binding(
                             get: { b?.limit ?? 0 },
@@ -181,14 +183,14 @@ struct BudgetsSection: View {
 
 // ── Trends: 6-month income vs spending bars ──
 struct TrendsSection: View {
-    let txs: [Txn]
+    let ledger: Ledger
 
     private var months: [(label: String, key: String, income: Double, spent: Double)] {
         let cal = Calendar.current
         return (0..<6).reversed().map { back in
             let d = cal.date(byAdding: .month, value: -back, to: Date())!
             let key = Fmt.monthKey(d)
-            let s = Money.monthStats(txs: txs, monthKey: key)
+            let s = ledger.monthStats(key)
             return (d.formatted(.dateTime.month(.abbreviated)), key, s.income, s.spent)
         }
     }

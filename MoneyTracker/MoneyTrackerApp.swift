@@ -13,6 +13,7 @@ struct MoneyTrackerApp: App {
             container = try ModelContainer(for: Account.self, TxCategory.self, Txn.self,
                                            Goal.self, RecurringTxn.self, Debt.self, Budget.self)
             BackupService.seedIfEmpty(ctx: container.mainContext)
+            BackupService.migrateIfNeeded(ctx: container.mainContext)
         } catch {
             fatalError("Could not create SwiftData container: \(error)")
         }
@@ -26,14 +27,11 @@ struct MoneyTrackerApp: App {
             }
             .onAppear {
                 locked = appLockEnabled
-                BackupService.triggerRecurring(ctx: container.mainContext)
             }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .background:
                     if appLockEnabled { locked = true }
-                case .active:
-                    BackupService.triggerRecurring(ctx: container.mainContext)
                 default: break
                 }
             }

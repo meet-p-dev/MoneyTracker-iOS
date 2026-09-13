@@ -1,7 +1,10 @@
 # MoneyTracker (iOS)
 
-Native SwiftUI + SwiftData rewrite of the MoneyTrack personal-finance app. Fully offline, no backend.
+Native SwiftUI + SwiftData version of the MoneyTrack personal-finance app.
 
-Drag these `.swift` files into an Xcode project named MoneyTracker (bundle id `com.patel.MoneyTracker`, SwiftUI interface). Replace Xcode's generated `MoneyTrackerApp.swift` and `ContentView.swift`. Add the `NSFaceIDUsageDescription` Info key.
+Open `MoneyTracker.xcodeproj` (scheme `MoneyTracker`, bundle id `com.patel.MoneyTracker`).
+Sources live in `MoneyTracker/`.
 
-Imports your data from the MoneyTrack web app's JSON backup (Settings → Restore). Separate from the MoneyTrack HTML app and from Heimat — its own repo.
+Reads and writes the exact JSON backup of the MoneyTrack web app (Settings → Restore),
+so data moves between the two without loss. Separate from the MoneyTrack web app and
+from Heimat — its own repo.

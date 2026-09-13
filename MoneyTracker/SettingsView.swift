@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var exportURL: URL?
     @State private var importResult: String?
     @State private var confirmWipe = false
+    @State private var regionId = Regions.currentId
 
     var body: some View {
         NavigationStack {
@@ -29,12 +30,18 @@ struct SettingsView: View {
                     Button {
                         showImporter = true
                     } label: {
-                        Label("Restore backup / import from PWA", systemImage: "square.and.arrow.down")
+                        Label("Restore a backup (from the web app too)", systemImage: "square.and.arrow.down")
                     }
                     if let importResult {
                         Text(importResult).font(.footnote).foregroundStyle(.secondary)
                     }
                 }
+                Section {
+                    Picker("Currency & region", selection: $regionId) {
+                        ForEach(Regions.all) { r in Text("\(r.flag) \(r.country) · \(r.sym)").tag(r.id) }
+                    }
+                    .onChange(of: regionId) { _, v in Regions.currentId = v }
+                } footer: { Text("Changes the currency symbol and how amounts are written — e.g. 1.234,56 € or $1,234.56.") }
                 Section("Security") {
                     Toggle(isOn: $appLockEnabled) {
                         Label("App Lock (Face ID)", systemImage: "faceid")
@@ -46,7 +53,7 @@ struct SettingsView: View {
                     }
                 }
                 Section {
-                    LabeledContent("Version", value: "3.0 (native)")
+                    LabeledContent("Version", value: "11.8 (native)")
                 }
             }
             .navigationTitle("Settings & Data")
@@ -79,10 +86,7 @@ struct SettingsView: View {
             .confirmationDialog("Delete ALL data? This cannot be undone.",
                                 isPresented: $confirmWipe, titleVisibility: .visible) {
                 Button("Delete everything", role: .destructive) {
-                    try? ctx.delete(model: Txn.self); try? ctx.delete(model: Goal.self)
-                    try? ctx.delete(model: RecurringTxn.self); try? ctx.delete(model: Debt.self)
-                    try? ctx.delete(model: Budget.self)
-                    try? ctx.save()
+                    BackupService.wipe(ctx: ctx)
                     importResult = "All data cleared"
                 }
             }
