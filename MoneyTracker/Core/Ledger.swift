@@ -49,6 +49,10 @@ struct Row: Identifiable, Hashable {
     var cardPay: Bool = false          // bank debit auto-matched as a card-bill payment
     var decided: Bool = false          // type/category come from your own decision
     var clamped: Bool = false          // your decision tried to reverse the direction
+    var needsReview: Bool = false      // incoming money the classifier isn't sure about
+    var reason: String = ""            // why the classifier decided what it did
+    var confidence: Double? = nil
+    var suggest: [String] = []         // the classifier's top guesses (labels)
 
     /// What this costs YOU: an expense's share if you set one, else the full amount.
     var personal: Double { type == "expense" ? (share ?? amount) : amount }
@@ -83,16 +87,20 @@ struct Ledger {
     let rows: [Row]
     private let byId: [String: AccSnap]
 
-    init(accounts: [AccSnap], raw: [Row], decisions: [String: JSONValue] = [:], shares: [String: Double] = [:]) {
+    init(accounts: [AccSnap], raw: [Row], decisions: [String: JSONValue] = [:], shares: [String: Double] = [:],
+         payeeStats: [String: JSONValue] = [:], ownerName: String = "") {
         var m: [String: AccSnap] = [:]
         for a in accounts { m[a.id] = a }
         self.accounts = accounts
         self.byId = m
-        self.rows = Ledger.effective(raw: raw, accounts: accounts, byId: m, decisions: decisions, shares: shares)
+        self.rows = Ledger.effective(raw: raw, accounts: accounts, byId: m, decisions: decisions, shares: shares,
+                                     payeeStats: payeeStats, ownerName: ownerName)
     }
 
     private static func effective(raw: [Row], accounts: [AccSnap], byId: [String: AccSnap],
-                                  decisions: [String: JSONValue], shares: [String: Double]) -> [Row] {
+                                  decisions: [String: JSONValue], shares: [String: Double],
+                                  payeeStats: [String: JSONValue], ownerName: String) -> [Row] {
+        let res = Classifier.classifyAll(raw, ownerName: ownerName, payeeStats: payeeStats, decisions: decisions)
         let cards = accounts.filter(\.isCredit)
         let payCards = cards.filter { !$0.billPayee.trimmed.isEmpty }.map { ($0.id, $0.billPayee.trimmed.lowercased()) }
         func matchCard(_ t: Row, ownTransfer: Bool) -> String? {
@@ -110,25 +118,26 @@ struct Ledger {
         return raw.map { t in
             var r = t
             r.rawType = t.type; r.rawCategoryId = t.categoryId
-            let dec = decisions[t.id].flatMap(Decision.init)
-            if t.isBank, let d = dec {
-                let inbound = t.type == "income" || t.type == "credit"
-                let allowed = inbound ? ["income", "credit"] : ["expense", "debit"]
-                let outTransfer = !inbound && d.type == "transfer" && d.toAccountId != nil
-                let kept = (outTransfer || allowed.contains(d.type)) ? d.type : allowed[1]
-                r.type = kept; r.decided = true; r.clamped = kept != d.type
-                if let c = d.category, !c.isEmpty { r.categoryId = c }
-                if kept == "transfer" {
-                    if let dest = d.toAccountId, dest != t.accountId, byId[dest] != nil { r.toAccountId = dest }
+            let c = res[t.id]
+            if let c {
+                r.type = c.type
+                if !c.category.isEmpty { r.categoryId = c.category }
+                r.needsReview = c.needsReview; r.reason = c.reason; r.confidence = c.confidence; r.suggest = c.suggest
+                r.decided = c.decided; r.clamped = c.clamped
+                // Your "Transfer → card/account" on a bank debit: only a destination that still
+                // exists and isn't the same account counts; otherwise it's plain money out.
+                if c.type == "transfer" {
+                    if let dest = c.toAccountId, dest != t.accountId, byId[dest] != nil { r.toAccountId = dest }
                     else { r.type = "debit" }
                 }
             }
             // Your own choice beats auto-matching (a transfer decision WITHOUT a destination
             // — saved by web V11.3–11.6 — still gets its card filled in).
+            let dec = decisions[t.id].flatMap(Decision.init)
             let userPicked = dec.map { $0.type != "transfer" || $0.toAccountId != nil } ?? false
             if !userPicked && (t.type == "expense" || t.type == "debit"),
-               let cardId = matchCard(t, ownTransfer: r.type == "debit" && r.categoryId == "transfer") {
-                r.type = "transfer"; r.toAccountId = cardId; r.categoryId = "transfer"; r.cardPay = true
+               let cardId = matchCard(t, ownTransfer: c?.type == "debit" && c?.category == "transfer") {
+                r.type = "transfer"; r.toAccountId = cardId; r.categoryId = "transfer"; r.cardPay = true; r.needsReview = false
             }
             if let s = shares[t.id] { r.share = s }
             return r
@@ -136,6 +145,8 @@ struct Ledger {
     }
 
     func account(_ id: String) -> AccSnap? { byId[id] }
+    /// Incoming bank money the classifier couldn't confidently call — the Review inbox.
+    var reviewRows: [Row] { rows.filter(\.needsReview) }
     var cards: [AccSnap] { accounts.filter(\.isCredit) }
     var cashAccounts: [AccSnap] { accounts.filter { !$0.isCredit } }
 

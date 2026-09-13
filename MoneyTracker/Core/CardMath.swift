@@ -149,7 +149,7 @@ enum CardMath {
     // ── Credit-card bill detection (web V11.7) ──
     // 1 unmistakable bill phrase → yes · 2 debit-card purchase wording → no · 3 a card-only
     // issuer → yes · 4 a network name only WITH a bill word, or when it's money to yourself.
-    private static func re(_ p: String) -> NSRegularExpression { try! NSRegularExpression(pattern: p, options: [.caseInsensitive]) }
+    private static func re(_ p: String) -> NSRegularExpression { JSRegex.make(p) }
     private static let reStrong = re(#"\b(kreditkarten?|kreditkarten(abrechnung|rechnung|konto|ausgleich|saldo|zahlung)|credit ?cards?|kk[- ]?abrechnung|kartenabrechnung|card ?bill|card statement|cc ?bill)\b"#)
     private static let reNot = re(#"\b(debit ?mastercard|mastercard ?debit|visa ?debit|debit ?card|debitkarte|girocard|kartenzahlung|kartenumsatz|apple ?pay|google ?pay)\b"#)
     private static let reIssuer = re(#"\b(advanzia|gebührenfrei|gebuehrenfrei|awa ?7|barclaycard|american express|hanseatic|tf ?bank)\b"#)

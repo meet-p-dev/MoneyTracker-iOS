@@ -15,6 +15,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink { BankSyncView() } label: {
+                        LabeledContent {
+                            Text(CloudSync.shared.signedIn ? "On" : "Off").foregroundStyle(CloudSync.shared.signedIn ? .green : .secondary)
+                        } label: { Label("Bank sync", systemImage: "building.columns") }
+                    }
+                } footer: { Text("Your bank transactions, the same as in the web app — sign in once.") }
                 Section("Data backup") {
                     Button {
                         do {

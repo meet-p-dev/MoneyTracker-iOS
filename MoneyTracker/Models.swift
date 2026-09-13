@@ -167,6 +167,7 @@ extension Ledger {
     /// The effective ledger for the current data + your learning (decisions, My share).
     static func build(accounts: [Account], txs: [Txn], learning: LearningStore = .shared) -> Ledger {
         Ledger(accounts: accounts.map(\.snap), raw: txs.map(\.row),
-               decisions: learning.txDecisions, shares: learning.shareOverrides)
+               decisions: learning.txDecisions, shares: learning.shareOverrides,
+               payeeStats: learning.payeeStats, ownerName: learning.ownerName)
     }
 }

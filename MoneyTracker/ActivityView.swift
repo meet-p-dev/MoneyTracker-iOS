@@ -67,6 +67,7 @@ struct ActivityView: View {
                 }
             }
             .searchable(text: $search, prompt: "Search merchant…")
+            .refreshable { await CloudSync.shared.sync(ctx: ctx) }
             .navigationTitle("Activity")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

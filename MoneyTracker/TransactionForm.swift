@@ -26,6 +26,7 @@ struct TransactionForm: View {
     @State private var date = Date()
     @State private var share = ""
     @State private var effOld: Row?
+    @State private var catTouched = false
     @State private var loaded = false
 
     private let kinds: [(id: String, label: String, icon: String)] = [
@@ -55,6 +56,13 @@ struct TransactionForm: View {
                             .disabled(isBankRow)
                     }
                     TextField(type == "income" ? "Source (e.g. Salary)" : "Merchant / payee", text: $merchant)
+                        .onChange(of: merchant) { _, m in
+                            // Type a shop and its category fills itself in (what you taught > known shops);
+                            // never overrides a category you picked yourself.
+                            guard existing == nil, type == "expense", !catTouched,
+                                  let c = Classifier.suggestCategory(merchant: m, payeeStats: LearningStore.shared.payeeStats) else { return }
+                            categoryId = c
+                        }
                 } footer: {
                     if isBankRow { Text("This came from your bank, so the amount, date and account stay as the bank booked them. You can change what it is.") }
                 }
@@ -70,7 +78,7 @@ struct TransactionForm: View {
                             ForEach(accounts.filter { $0.id != accountId }) { a in Text(a.name).tag(a.id) }
                         }
                     } else {
-                        Picker("Category", selection: $categoryId) {
+                        Picker("Category", selection: Binding(get: { categoryId }, set: { categoryId = $0; catTouched = true })) {
                             ForEach(cats) { c in Text(c.label).tag(c.id) }
                         }
                     }
@@ -168,7 +176,9 @@ struct TransactionForm: View {
             amount = Fmt.editable(t.amount); merchant = t.merchant; accountId = t.accountId
             notes = t.notes; date = Fmt.parse(t.date)
             share = LearningStore.shared.share(t.id).map(Fmt.editable) ?? ""
+            catTouched = true
         } else {
+            catTouched = false
             accountId = UserDefaults.standard.string(forKey: "lastAccount").flatMap { id in accounts.first { $0.id == id }?.id }
                 ?? accounts.first?.id ?? ""
             categoryId = UserDefaults.standard.string(forKey: "lastCategory") ?? "other"
@@ -188,6 +198,11 @@ struct TransactionForm: View {
                 // The bank owns the cash facts; remember what you say it IS as a decision.
                 if let e = effOld, e.type != type || e.categoryId != cat || (isTrf && e.toAccountId != toAccountId) {
                     LearningStore.shared.setDecision(Decision(type: type, category: cat, toAccountId: isTrf ? toAccountId : nil), for: t.id)
+                    // Teach this payee too, so the next row from them is sorted the same way.
+                    if let label = Classifier.labelCls.first(where: { $0.value.type == type && $0.value.category == cat })?.key {
+                        let key = Classifier.counterpartyKey(merchant)
+                        LearningStore.shared.updatePayeeStats { Classifier.bumpPayeeStats($0, key: key, label: label) }
+                    }
                 }
             } else {
                 t.type = type; t.amount = v; t.accountId = accountId
@@ -197,6 +212,11 @@ struct TransactionForm: View {
             let t = Txn(type: type, amount: v, merchant: merchant, categoryId: cat, accountId: accountId,
                         toAccountId: isTrf ? toAccountId : "", notes: notes, date: dayStr)
             ctx.insert(t); txId = t.id
+        }
+        // Learn the shop's category (bank rows AND manual entries), for next time.
+        if type == "expense" && cat != "other" {
+            let key = Classifier.counterpartyKey(merchant)
+            LearningStore.shared.updatePayeeStats { Classifier.setPayeeCat($0, key: key, cat: cat) }
         }
         let s = Fmt.amount(share)
         if type == "expense", let s, s >= 0, s < v { LearningStore.shared.setShare(s, for: txId) }

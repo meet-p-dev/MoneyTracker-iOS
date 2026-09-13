@@ -286,6 +286,8 @@ struct AccountForm: View {
         }
         a.apply(s)
         if existing == nil { ctx.insert(a) }
+        // A bank account's balance/name/color live in your account, so every device agrees.
+        if a.isSynced { CloudSync.shared.updateBankAccount(id: a.id, ib: s.ib, name: s.name, color: s.colorHex) }
         try? ctx.save(); Haptic.success(); dismiss()
     }
 }

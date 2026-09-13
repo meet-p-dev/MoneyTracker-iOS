@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct HomeView: View {
+    @Environment(\.modelContext) private var ctx
     @Query(sort: \Account.sortIndex) private var accounts: [Account]
     @Query private var cats: [TxCategory]
     @Query(sort: \Txn.date, order: .reverse) private var txs: [Txn]
@@ -10,6 +11,7 @@ struct HomeView: View {
     @State private var showAdd = false
     @State private var editTx: Txn?
     @State private var fixIssue: Ledger.Issue?
+    @State private var showReview = false
 
     private var monthKey: String { Fmt.monthKey() }
     private var daysLeft: Int {
@@ -32,6 +34,22 @@ struct HomeView: View {
         return NavigationStack {
             List {
                 Section { hero(L, stats).listRowBackground(Color.clear).listRowSeparator(.hidden) }
+                if !L.reviewRows.isEmpty {
+                    Section {
+                        Button { showReview = true } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "tray.full.fill").foregroundStyle(.teal)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(L.reviewRows.count) payment\(L.reviewRows.count == 1 ? "" : "s") to review").font(.subheadline.weight(.semibold))
+                                    Text("Confirm which incoming money is really income").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("Review").font(.subheadline.weight(.semibold)).foregroundStyle(.teal)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
                 if !L.issues.isEmpty {
                     Section {
                         ForEach(L.issues) { i in IssueBanner(issue: i) { fixIssue = i } }
@@ -66,6 +84,7 @@ struct HomeView: View {
                     }
                 }
             }
+            .refreshable { await CloudSync.shared.sync(ctx: ctx) }
             .navigationTitle("MoneyTrack")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -79,6 +98,7 @@ struct HomeView: View {
             .sheet(isPresented: $showAdd) { TransactionForm(existing: nil) }
             .sheet(item: $editTx) { TransactionForm(existing: $0) }
             .sheet(item: $fixIssue) { i in AccountForm(existing: accounts.first { $0.id == i.acc.id }, hint: i) }
+            .sheet(isPresented: $showReview) { ReviewSheet() }
         }
     }
 
@@ -95,6 +115,14 @@ struct HomeView: View {
             if L.creditOwed > 0 {
                 Text("\(Fmt.money(L.assets)) cash − \(Fmt.money(L.creditOwed)) credit")
                     .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+            }
+            if CloudSync.shared.signedIn {
+                Label(CloudSync.shared.syncing ? "Syncing…" : "Bank sync on · 3×/day", systemImage: "circle.fill")
+                    .labelStyle(.titleAndIcon).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                    .imageScale(.small).symbolRenderingMode(.palette).foregroundStyle(.green, .secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                    .padding(.top, 4)
             }
             HStack(spacing: 28) {
                 heroStat("INCOME", "+" + Fmt.money(stats.income), .green)
