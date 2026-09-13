@@ -271,21 +271,42 @@ struct BalanceChartView: View {
 struct IncomeSpendChart: View {
     let data: [(key: String, income: Double, spent: Double)]
     var height: CGFloat = 150
+    var selection: Binding<String?>? = nil
     var body: some View {
-        Chart {
+        let chart = Chart {
+            if let sel = selection?.wrappedValue {
+                RuleMark(x: .value("Month", sel)).foregroundStyle(Color.mtAcc.opacity(0.12)).lineStyle(StrokeStyle(lineWidth: 34))
+            }
             ForEach(data, id: \.key) { m in
-                BarMark(x: .value("Month", label(m.key)), y: .value("Amount", m.income), width: 10)
+                BarMark(x: .value("Month", Self.label(m.key)), y: .value("Amount", m.income), width: 10)
                     .position(by: .value("Kind", "Income")).foregroundStyle(Color.mtGreen).cornerRadius(3)
-                BarMark(x: .value("Month", label(m.key)), y: .value("Amount", m.spent), width: 10)
+                BarMark(x: .value("Month", Self.label(m.key)), y: .value("Amount", m.spent), width: 10)
                     .position(by: .value("Kind", "Spent")).foregroundStyle(Color.mtRed.opacity(0.85)).cornerRadius(3)
             }
         }
+        .chartXScale(domain: data.map { Self.label($0.key) })   // keep month order when one is highlighted
         .chartForegroundStyleScale(["Income": Color.mtGreen, "Spent": Color.mtRed.opacity(0.85)])
         .chartLegend(position: .top, alignment: .trailing)
         .chartYAxis { AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { _ in AxisGridLine().foregroundStyle(Color.mtBorder) } }
         .frame(height: height)
+        if let selection {
+            // A plain tap picks a month (tap it again to let go) — the built-in selection needs a drag.
+            chart.chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .onTapGesture { loc in
+                            guard let plot = proxy.plotFrame else { return }
+                            let x = loc.x - geo[plot].origin.x
+                            if let v: String = proxy.value(atX: x) {
+                                Haptic.tap()
+                                withAnimation(MT.spring) { selection.wrappedValue = selection.wrappedValue == v ? nil : v }
+                            }
+                        }
+                }
+            }
+        } else { chart }
     }
-    private func label(_ key: String) -> String {
+    static func label(_ key: String) -> String {
         let p = key.split(separator: "-").compactMap { Int($0) }
         guard p.count == 2 else { return key }
         let f = DateFormatter(); f.dateFormat = "MMM"

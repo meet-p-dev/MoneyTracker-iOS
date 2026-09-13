@@ -1,31 +1,45 @@
 import SwiftUI
 import SwiftData
 
-// The app shell: iOS 26's floating Liquid Glass tab bar with the web app's five places.
-// The middle "+" isn't a screen — tapping it opens the add sheet from wherever you are.
+// The app shell: the four places in a TabView (each keeps its own scroll and navigation),
+// the app's own Liquid Glass tab bar with the big "+", the welcome tour for a brand-new
+// install, and card auto-pay.
 struct ContentView: View {
     @Environment(\.modelContext) private var ctx
     @State private var router = Router()
+    @AppStorage("mt-ios-tour-seen") private var tourSeen = false
+    @Query private var accounts: [Account]
+    @Query private var txs: [Txn]
+    @State private var tourAction: TourAction?
 
     var body: some View {
         TabView(selection: $router.tab) {
-            Tab("Home", systemImage: "house.fill", value: AppTab.home) { HomeView() }
-            Tab("Activity", systemImage: "list.bullet", value: AppTab.activity) { ActivityView() }
-            Tab("Add", systemImage: "plus.circle.fill", value: AppTab.add) { Color.mtBg }
-            Tab("Insights", systemImage: "chart.pie.fill", value: AppTab.insights) { InsightsView() }
-            Tab("Wallet", systemImage: "wallet.bifold.fill", value: AppTab.wallet) { WalletView() }
+            Tab("Home", systemImage: "house.fill", value: AppTab.home) { HomeView().mtTabContent() }
+            Tab("Activity", systemImage: "list.bullet", value: AppTab.activity) { ActivityView().mtTabContent() }
+            Tab("Insights", systemImage: "chart.pie.fill", value: AppTab.insights) { InsightsView().mtTabContent() }
+            Tab("Wallet", systemImage: "wallet.bifold.fill", value: AppTab.wallet) { WalletView().mtTabContent() }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
+        .overlay(alignment: .bottom) { GlassTabBar(router: router).ignoresSafeArea(.keyboard, edges: .bottom) }
         .tint(.mtAcc)
-        .environment(router)
-        .onChange(of: router.tab) { old, new in
-            guard new == .add else { return }
-            router.tab = old == .add ? .home : old
-            router.showAdd = true
-            Haptic.tap()
+        .sheet(isPresented: $router.showAdd) { TransactionForm(existing: nil) }
+        .fullScreenCover(isPresented: $router.showTour) {
+            TourView { action in
+                tourSeen = true
+                router.showTour = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { tourAction = action }
+            }
         }
-        .sheet(isPresented: $router.showAdd) { TransactionForm(existing: nil).environment(router) }
+        .sheet(item: $tourAction) { a in
+            switch a {
+            case .bank: NavigationStack { BankSyncView() }
+            case .account: AccountForm(existing: nil)
+            case .backup: SettingsView()
+            case .howItWorks: HowItWorksView()
+            }
+        }
+        .onAppear { if !tourSeen && accounts.isEmpty && txs.isEmpty { router.showTour = true } }
         .task { CardAutopay.run(ctx: ctx) }
+        .environment(router)
     }
 }
 

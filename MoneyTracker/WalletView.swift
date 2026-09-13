@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import TipKit
 
 // Wallet — everything you HAVE (web V11): Accounts & cards · Debts · Goals · Categories.
 struct WalletView: View {
@@ -89,6 +90,7 @@ struct AccountsSection: View {
             let cards = accounts.filter(\.isCredit)
             if !cards.isEmpty {
                 SectionLabel(text: "Credit cards")
+                TipView(CardTip())
                 ForEach(cards) { c in
                     Button { cardSheet = c } label: { CardTile(card: c, s: L.cardStats(c.snap)) }
                         .buttonStyle(.press)

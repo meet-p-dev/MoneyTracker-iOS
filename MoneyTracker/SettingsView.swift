@@ -11,10 +11,24 @@ struct SettingsView: View {
     @State private var importResult: String?
     @State private var confirmWipe = false
     @State private var regionId = Regions.currentId
+    @State private var showHow = false
+    @State private var tipsNote: String?
+    @Environment(Router.self) private var router
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Button { showHow = true } label: { Label("How MoneyTrack works", systemImage: "point.3.connected.trianglepath.dotted") }
+                    Button {
+                        dismiss()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { router.showTour = true }
+                    } label: { Label("Show the welcome tour", systemImage: "sparkles") }
+                    Button {
+                        UserDefaults.standard.set(true, forKey: "mt-reset-tips")
+                        tipsNote = "Tips will show again the next time you open the app."
+                    } label: { Label("Show tips again", systemImage: "lightbulb") }
+                } header: { Text("Help") } footer: { if let tipsNote { Text(tipsNote) } }
                 Section {
                     NavigationLink { BankSyncView() } label: {
                         LabeledContent {
@@ -87,6 +101,7 @@ struct SettingsView: View {
                     importResult = err.localizedDescription
                 }
             }
+            .sheet(isPresented: $showHow) { HowItWorksView() }
             .sheet(item: $exportURL) { url in
                 ShareSheet(url: url)
             }

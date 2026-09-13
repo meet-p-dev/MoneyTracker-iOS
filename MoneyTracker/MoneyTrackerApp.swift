@@ -15,6 +15,7 @@ struct MoneyTrackerApp: App {
             BackupService.seedIfEmpty(ctx: container.mainContext)
             BackupService.migrateIfNeeded(ctx: container.mainContext)
             _ = CloudSync.shared          // restores your sign-in and hooks learning → cloud
+            MTTips.configure()            // Apple's tip bubbles (Settings → Show tips again resets them)
         } catch {
             fatalError("Could not create SwiftData container: \(error)")
         }

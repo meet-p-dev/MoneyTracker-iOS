@@ -4,12 +4,13 @@ import Observation
 // Web V11 navigation: Home · Activity · [+] · Insights · Wallet. Every number that leads
 // somewhere goes through here (Income → Activity filtered to income, a top category →
 // its merchants in Insights, a card → its screen in Wallet…).
-enum AppTab: Hashable { case home, activity, add, insights, wallet }
+enum AppTab: Hashable { case home, activity, insights, wallet }
 
 @Observable
 final class Router {
     var tab: AppTab = .home
     var showAdd = false
+    var showTour = false
     // Activity filters
     var activityType = ""
     var activitySearch = ""

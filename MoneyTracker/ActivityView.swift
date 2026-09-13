@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import TipKit
 
 // Activity (web ActivityTab): search, the five direction chips, a live summary line
 // ("12 transactions · 342,10 € spent"), category/account filters, then every row by day.
@@ -29,6 +30,7 @@ struct ActivityView: View {
         return NavigationStack {
             List {
                 Section {
+                    TipView(ReceivedTip()).listRowBackground(Color.clear).listRowSeparator(.hidden)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(kinds, id: \.0) { k in
