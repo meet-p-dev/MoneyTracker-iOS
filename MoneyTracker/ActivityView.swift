@@ -30,7 +30,6 @@ struct ActivityView: View {
         return NavigationStack {
             List {
                 Section {
-                    TipView(ReceivedTip()).listRowBackground(Color.clear).listRowSeparator(.hidden)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 7) {
                             ForEach(kinds, id: \.0) { k in

@@ -16,7 +16,6 @@ struct HomeView: View {
     @Query(sort: \Debt.date, order: .reverse) private var debts: [Debt]
     @AppStorage("mt-debt-banner-seen") private var debtBannerSeen = false
     @AppStorage("mt-ios-checklist-hidden") private var checklistHidden = false
-    @State private var showSettings = false
     @State private var editTx: Txn?
     @State private var fixIssue: Ledger.Issue?
     @State private var showReview = false
@@ -55,13 +54,19 @@ struct HomeView: View {
             }
             .mtCanvas()
             .refreshable { await CloudSync.shared.sync(ctx: ctx) }
-            .navigationTitle("MoneyTrack")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                ToolbarItem(placement: .topBarLeading) {
+                    Text("MoneyTrack").font(.system(size: 20, weight: .bold)).kerning(-0.4).fixedSize()
                 }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { router.showProfile = true } label: { ProfileAvatar(size: 34) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Profile")
+                }
+                .sharedBackgroundVisibility(.hidden)
             }
-            .sheet(isPresented: $showSettings) { SettingsView() }
             .sheet(item: $editTx) { TransactionForm(existing: $0) }
             .sheet(item: $fixIssue) { i in AccountForm(existing: accounts.first { $0.id == i.acc.id }, hint: i) }
             .sheet(isPresented: $showReview) { ReviewSheet() }
@@ -131,11 +136,11 @@ struct HomeView: View {
     private struct Step: Identifiable { let id: String; let title: String; let sub: String; let icon: String; let done: Bool; let action: () -> Void }
     private var steps: [Step] {
         [
-            Step(id: "acc", title: "Add or connect an account", sub: "Where your money lives — a bank syncs by itself", icon: "wallet.bifold.fill", done: !accounts.isEmpty) { router.goWallet("accounts") },
-            Step(id: "tx", title: "Log your first transaction", sub: "Tap the big + — or let bank sync bring them", icon: "plus.circle.fill", done: !txs.isEmpty) { router.showAdd = true },
-            Step(id: "budget", title: "Set a monthly budget", sub: "A limit per category; Home then shows what's safe to spend", icon: "chart.pie.fill", done: !budgets.isEmpty) { router.goInsights("budget") },
-            Step(id: "goal", title: "Start a savings goal", sub: "Something to save for — it fills up as you go", icon: "target", done: !goals.isEmpty) { router.goWallet("goals") },
-            Step(id: "sync", title: "Turn on bank sync", sub: "Optional — your real transactions, 3× a day", icon: "building.columns.fill", done: CloudSync.shared.signedIn) { showBankSync = true },
+            Step(id: "acc", title: "Add or connect an account", sub: "A bank account, cash or a card", icon: "wallet.bifold.fill", done: !accounts.isEmpty) { router.goWallet("accounts") },
+            Step(id: "tx", title: "Log your first transaction", sub: "Use the + button", icon: "plus.circle.fill", done: !txs.isEmpty) { router.showAdd = true },
+            Step(id: "budget", title: "Set a monthly budget", sub: "A monthly limit for a category", icon: "chart.pie.fill", done: !budgets.isEmpty) { router.goInsights("budget") },
+            Step(id: "goal", title: "Start a savings goal", sub: "Something you're saving for", icon: "target", done: !goals.isEmpty) { router.goWallet("goals") },
+            Step(id: "sync", title: "Turn on bank sync", sub: "Optional. Imports your bank transactions", icon: "building.columns.fill", done: CloudSync.shared.signedIn) { showBankSync = true },
         ]
     }
 
@@ -171,7 +176,7 @@ struct HomeView: View {
                     }
                 }
                 HStack {
-                    Button { showHowItWorks = true } label: { Label("How it all connects", systemImage: "point.3.connected.trianglepath.dotted") }
+                    Button { showHowItWorks = true } label: { Label("How it works", systemImage: "questionmark.circle") }
                         .font(.system(size: 13, weight: .semibold))
                     Spacer()
                     Button("Hide") { withAnimation(MT.spring) { checklistHidden = true } }.font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.mtTxt3)
@@ -197,7 +202,7 @@ struct HomeView: View {
         if let f = overdue.first {
             list.append(Attention(id: "overdue", tone: .mtRed, icon: "creditcard.fill",
                                   title: "Card bill overdue · \(Fmt.money(overdue.reduce(0) { $0 + $1.1.amountDue }))",
-                                  sub: overdue.count == 1 ? "\(f.0.name) · \(abs(f.1.daysToDue))d late — tap to pay" : "\(overdue.count) cards late — tap to pay",
+                                  sub: overdue.count == 1 ? "\(f.0.name) · \(abs(f.1.daysToDue))d late" : "\(overdue.count) cards are late",
                                   cta: "Pay") { router.goWallet("accounts", card: f.0.id) })
         }
         let review = L.reviewRows.count
@@ -223,7 +228,7 @@ struct HomeView: View {
         if !active.isEmpty && !debtBannerSeen {
             list.append(Attention(id: "debts", tone: .mtRed, icon: "person.2.fill",
                                   title: "You owe \(Fmt.money(active.reduce(0) { $0 + ($1.totalAmount - $1.paidBack) }))",
-                                  sub: "\(active.count) active debt\(active.count == 1 ? "" : "s") — tap to view", cta: "View") {
+                                  sub: "\(active.count) active debt\(active.count == 1 ? "" : "s")", cta: "View") {
                 debtBannerSeen = true; router.goWallet("debts")
             })
         }
@@ -362,7 +367,7 @@ struct HomeView: View {
             SectionLabel(text: "Recent", action: "See all") { router.goActivity() }.padding(.bottom, 8)
             if recent.isEmpty {
                 EmptyCard(icon: "list.bullet", title: "No transactions yet",
-                          message: accounts.isEmpty ? "Add or connect an account first — then tap + to log what you spend." : "Tap the big + to log your first one, or turn on bank sync and they arrive by themselves.")
+                          message: accounts.isEmpty ? "Add an account first, then use + to log spending." : "Use + to add one, or turn on bank sync.")
             } else {
                 TxRowsCard(rows: recent, cats: cats, accounts: accounts) { r in editTx = txs.first { $0.id == r.id } }
             }
@@ -444,12 +449,12 @@ struct HomeView: View {
         let spent = m.filter { $0.type == "expense" }.reduce(0) { $0 + $1.personal }
         let moved = m.filter { $0.type == "debit" || $0.type == "transfer" }.reduce(0) { $0 + $1.amount }
         return Explanation(title: "This month", intro: "Only real earnings count as income, and only your share of spending counts as spent.",
-                           lines: [ExplainLine(label: "Income", value: "+" + Fmt.money(income), tone: .mtGreen, sub: "salary, freelance — money you earned"),
-                                   ExplainLine(label: "Received", value: Fmt.money(received), tone: .mtTxt3, sub: "refunds, paybacks — not counted as income"),
-                                   ExplainLine(label: "Spent", value: "−" + Fmt.money(spent), tone: .mtRed, sub: "your share of every expense"),
-                                   ExplainLine(label: "Sent out & transfers", value: Fmt.money(moved), tone: .mtTxt3, sub: "your own money moving — not spending")],
+                           lines: [ExplainLine(label: "Income", value: "+" + Fmt.money(income), tone: .mtGreen, sub: "salary and other earnings"),
+                                   ExplainLine(label: "Received", value: Fmt.money(received), tone: .mtTxt3, sub: "refunds and paybacks, not income"),
+                                   ExplainLine(label: "Spent", value: "−" + Fmt.money(spent), tone: .mtRed, sub: "your share of each expense"),
+                                   ExplainLine(label: "Sent out & transfers", value: Fmt.money(moved), tone: .mtTxt3, sub: "your own money, not spending")],
                            total: ExplainLine(label: "Net", value: (income - spent >= 0 ? "+" : "") + Fmt.money(income - spent), tone: income - spent >= 0 ? .mtGreen : .mtRed),
-                           note: "Something in the wrong place? Open it in Activity and change its type — the app remembers for that payee.")
+                           note: "If something is in the wrong group, open it in Activity and change its type. The app remembers this for that payee.")
     }
 
     private func explainSafe(_ L: Ledger) -> Explanation {
@@ -484,6 +489,6 @@ struct HomeView: View {
         let b = budgetNumbers(L)
         return Explanation(title: "Budget left", intro: "For each category with a limit: the limit minus what you spent this month.",
                            lines: lines, total: ExplainLine(label: "Budget left", value: Fmt.money(max(b.total - b.spent, 0))),
-                           note: "A category over its limit shows in red — and on Home as \"Over budget\".")
+                           note: "Categories over their limit show in red.")
     }
 }

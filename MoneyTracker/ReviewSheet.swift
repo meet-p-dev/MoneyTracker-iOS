@@ -30,7 +30,7 @@ struct ReviewSheet: View {
                         .listRowBackground(Color.clear)
                 } else {
                     Section {
-                        Text("**\(rows.count)** incoming payment\(rows.count == 1 ? "" : "s") — not counted as income yet. Tap what each one is; the app remembers it for that person.")
+                        Text("**\(rows.count)** incoming payment\(rows.count == 1 ? "" : "s") not counted as income yet. Pick what each one is and the app will remember.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(rows) { r in Section { card(r) } }

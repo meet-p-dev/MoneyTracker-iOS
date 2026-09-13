@@ -10,44 +10,44 @@ struct HowItWorksView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    Text("Money comes in at the top and flows down. Tap any box to go there.")
+                    Text("How money moves through the app. Tap a section to open it.")
                         .font(.system(size: 14)).foregroundStyle(Color.mtTxt2).frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 14)
-                    node("building.columns.fill", .mtAcc, "Your bank", "Signed in to bank sync, your bank sends every booked transaction 3× a day. Nothing to type.") {
+                    node("building.columns.fill", .mtAcc, "Your bank", "With bank sync on, new transactions arrive three times a day.") {
                         router.goWallet("accounts")
                     }
-                    arrow("fills")
-                    node("wallet.bifold.fill", .mtGreen, "Accounts", "Where money lives. Bank accounts come from your bank; cash and cards are the ones you add, each with a starting balance and date.") {
+                    arrow("")
+                    node("wallet.bifold.fill", .mtGreen, "Accounts", "Bank accounts come from bank sync. Cash and cards you add yourself, with a starting balance and date.") {
                         router.goWallet("accounts")
                     }
-                    arrow("every move of money is a")
+                    arrow("")
                     VStack(alignment: .leading, spacing: 10) {
                         header("list.bullet", .orange, "Transaction")
-                        kind("arrow.up.right", .mtRed, "Expense", "you spent it — counts in spending")
-                        kind("arrow.down.left", .mtGreen, "Income", "you earned it — counts as income")
-                        kind("arrow.triangle.2.circlepath", .mtRecv, "Received", "money back — not income")
+                        kind("arrow.up.right", .mtRed, "Expense", "counts as spending")
+                        kind("arrow.down.left", .mtGreen, "Income", "salary and other earnings")
+                        kind("arrow.triangle.2.circlepath", .mtRecv, "Received", "refunds and paybacks")
                         kind("arrow.left.arrow.right", .gray, "Sent out", "money out that isn't spending")
-                        kind("arrow.left.arrow.right.circle", .mtAcc, "Transfer", "between your accounts — e.g. paying your card")
+                        kind("arrow.left.arrow.right.circle", .mtAcc, "Transfer", "between your own accounts")
                         goButton { router.goActivity() }
                     }
                     .mtCard(padding: 16)
-                    arrow("which feed")
-                    node("chart.pie.fill", .purple, "Insights & budgets", "Spending by category and month, budget limits, a calendar. Every number opens the transactions behind it.") {
+                    arrow("")
+                    node("chart.pie.fill", .purple, "Insights & budgets", "Spending by category and month, budgets and a calendar. Tap a number to see its transactions.") {
                         router.goInsights("spend")
                     }
                     arrow("")
-                    node("creditcard.fill", .mtRecv, "Credit cards", "Card purchases add to what you owe. A bill paid from your bank is a Transfer into the card — it's matched automatically.") {
+                    node("creditcard.fill", .mtRecv, "Credit cards", "Card purchases add to what you owe. Paying the bill from your bank is a transfer to the card, and the app matches it for you.") {
                         router.goWallet("accounts")
                     }
                     arrow("")
-                    node("tray.full.fill", .mtAcc, "Review & learning", "Incoming money the app isn't sure about waits for one tap. It remembers your answer for that person next time.") {
+                    node("tray.full.fill", .mtAcc, "Review & learning", "When the app isn't sure what incoming money is, it asks once and remembers the answer for that payee.") {
                         router.tab = .home
                     }
-                    arrow("and it all adds up on")
-                    node("house.fill", .mtAcc, "Home", "Total balance = your accounts − what cards owe. Plus the one thing that needs you, what's safe to spend, and this month so far.") {
+                    arrow("")
+                    node("house.fill", .mtAcc, "Home", "Your accounts minus what your cards owe, plus anything that needs attention and your month so far.") {
                         router.tab = .home
                     }
                     Divider().padding(.vertical, 20)
-                    node("target", .pink, "Debts & goals", "Separate trackers in Wallet: money you owe people (with repayments) and what you're saving for.") {
+                    node("target", .pink, "Debts & goals", "Money you owe people and what you're saving for, both in Wallet.") {
                         router.goWallet("goals")
                     }
                 }
@@ -79,12 +79,12 @@ struct HowItWorksView: View {
         HStack(spacing: 10) {
             Circle().fill(tint.opacity(0.16)).frame(width: 28, height: 28)
                 .overlay(Image(systemName: icon).font(.system(size: 12, weight: .bold)).foregroundStyle(tint))
-            Text(name).font(.system(size: 14, weight: .semibold)) + Text(" — \(text)").font(.system(size: 14)).foregroundStyle(Color.mtTxt2)
+            Text(name).font(.system(size: 14, weight: .semibold)) + Text("  \(text)").font(.system(size: 14)).foregroundStyle(Color.mtTxt2)
         }
     }
     private func goButton(_ go: @escaping () -> Void) -> some View {
-        Button { Haptic.tap(); go(); dismiss() } label: {
-            Text("Go there →").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.mtAcc)
+        Button { Haptic.tap(); go(); router.showProfile = false; dismiss() } label: {
+            Text("Open").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.mtAcc)
         }
         .buttonStyle(.plain)
     }

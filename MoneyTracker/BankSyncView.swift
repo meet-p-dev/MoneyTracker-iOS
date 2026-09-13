@@ -26,7 +26,7 @@ struct BankSyncView: View {
     @ViewBuilder private var signInForm: some View {
         Section {
             Label {
-                Text("Sign in with your MoneyTrack account and your bank transactions arrive here automatically — the same ones as in the web app, updated 3× a day.")
+                Text("Sign in with your MoneyTrack account to get the same bank transactions as in the web app. They update three times a day.")
             } icon: { Image(systemName: "building.columns.fill").foregroundStyle(.tint) }
             .font(.footnote)
         }
@@ -38,7 +38,7 @@ struct BankSyncView: View {
         } footer: {
             if let err { Text(err).foregroundStyle(.red) }
             else if let info { Text(info) }
-            else { Text("First time? Just pick a password — your account is created automatically.") }
+            else { Text("New here? Choose a password and your account is created.") }
         }
         Section {
             Button { signIn() } label: {

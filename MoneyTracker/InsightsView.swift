@@ -19,8 +19,6 @@ struct InsightsView: View {
     @State private var trendLabel: String?
     @State private var txSel: TxSelection?
     @State private var editTx: Txn?
-    private let insightsTip = InsightsTip()
-    private let calendarTip = CalendarTip()
 
     var body: some View {
         @Bindable var router = router
@@ -89,7 +87,6 @@ struct InsightsView: View {
         let total = L.spendTotal(month: month)
         let cur = Fmt.monthKey()
         let expenses = L.rows.filter { $0.type == "expense" && (month == nil || $0.date.hasPrefix(month!)) }
-        TipView(insightsTip)
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(["all"] + L.spendMonths, id: \.self) { k in
@@ -127,10 +124,10 @@ struct InsightsView: View {
                     }
                     .frame(height: 10)
                     HStack(spacing: 10) {
-                        legend("Cash", Fmt.money(cs.cash), .mtGreen) { show("Paid with cash", "This month · from your accounts", monthRows.filter { !cardIds.contains($0.accountId) }) }
-                        legend("Credit", Fmt.money(cs.credit), .orange) { show("Put on a card", "This month · money you still owe", monthRows.filter { cardIds.contains($0.accountId) }) }
+                        legend("Cash", Fmt.money(cs.cash), .mtGreen) { show("Paid from accounts", "This month", monthRows.filter { !cardIds.contains($0.accountId) }) }
+                        legend("Credit", Fmt.money(cs.credit), .orange) { show("Paid by card", "This month", monthRows.filter { cardIds.contains($0.accountId) }) }
                     }
-                    Text("\(Int((cs.credit / sum * 100).rounded()))% of what you spent this month was put on a card — money you still owe.")
+                    Text("\(Int((cs.credit / sum * 100).rounded()))% of this month's spending went on a card.")
                         .font(.system(size: 12)).foregroundStyle(Color.mtTxt2)
                 }
                 .mtCard(padding: 16)
@@ -138,7 +135,7 @@ struct InsightsView: View {
         }
 
         if list.isEmpty {
-            EmptyCard(icon: "chart.pie", title: "No spending yet", message: "Once you spend, this shows where the money goes — by category, and inside each category by shop.")
+            EmptyCard(icon: "chart.pie", title: "No spending yet", message: "Your spending by category and shop will show up here.")
         } else {
             let sel = selectedCategory(list)
             VStack(spacing: 10) {
@@ -191,7 +188,7 @@ struct InsightsView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack { Text(cat?.label ?? c.id).font(.system(size: 15, weight: .semibold)); Spacer(); Text(Fmt.money(c.total)).money(15) }
                             ProgressBar(value: c.total / top, color: Color(hex: cat?.colorHex ?? "#9ca3af"), height: 5)
-                            Text("\(c.merchants.count) shop\(c.merchants.count == 1 ? "" : "s") · tap to see them").font(.system(size: 12)).foregroundStyle(Color.mtTxt3)
+                            Text("\(c.merchants.count) shop\(c.merchants.count == 1 ? "" : "s")").font(.system(size: 12)).foregroundStyle(Color.mtTxt3)
                         }
                     }
                     .foregroundStyle(.primary)
@@ -237,7 +234,7 @@ struct InsightsView: View {
         let total = budgets.reduce(0) { $0 + $1.limit }
         let budgeted = Set(budgets.map(\.categoryId))
         let tSpent = budgets.reduce(0) { $0 + (spent[$1.categoryId] ?? 0) }
-        Button { show("Budgeted spending", "This month · categories with a limit", monthRows.filter { budgeted.contains($0.categoryId) }) } label: {
+        Button { show("Budgeted spending", "This month", monthRows.filter { budgeted.contains($0.categoryId) }) } label: {
             HStack(spacing: 16) {
                 RingView(value: total > 0 ? tSpent / total : 0, color: tSpent > total ? .mtRed : .mtAcc) {
                     Text(total > 0 ? "\(Int((tSpent / total * 100).rounded()))%" : "—").font(.system(size: 15, weight: .bold))
@@ -245,7 +242,7 @@ struct InsightsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Spent this month").font(.system(size: 13, weight: .medium)).foregroundStyle(Color.mtTxt2)
                     Text(Fmt.money(tSpent)).money(22)
-                    Text(total > 0 ? "of \(Fmt.money(total)) · \(Fmt.money(max(total - tSpent, 0))) left" : "No budgets yet — set a monthly limit below")
+                    Text(total > 0 ? "of \(Fmt.money(total)) · \(Fmt.money(max(total - tSpent, 0))) left" : "No budgets yet. Set a limit below.")
                         .font(.system(size: 13)).foregroundStyle(Color.mtTxt3)
                 }
                 Spacer()
@@ -254,7 +251,7 @@ struct InsightsView: View {
             .mtCard(padding: 16)
         }
         .buttonStyle(.press)
-        SectionLabel(text: "Monthly limit per category · tap one for its spending")
+        SectionLabel(text: "Monthly limits")
         ForEach(cats.filter { !["salary", "freelance", "transfer", "reimburse", "refund"].contains($0.id) }) { c in
             BudgetRow(cat: c, budget: budgets.first { $0.categoryId == c.id }, spent: spent[c.id] ?? 0) {
                 show(c.label, "This month", monthRows.filter { $0.categoryId == c.id })
@@ -272,7 +269,6 @@ struct InsightsView: View {
         let total = data.values.reduce(0, +)
         let busiest = data.max { $0.value < $1.value }
         let cur = Fmt.monthKey()
-        TipView(calendarTip)
         HStack {
             Button { shiftMonth(-1) } label: { Image(systemName: "chevron.left") }.buttonStyle(.glass)
             Spacer()
@@ -362,7 +358,7 @@ struct InsightsView: View {
     // ── Trends: tap a month for its income and spending ──
     @ViewBuilder private func trendsPanel(_ L: Ledger) -> some View {
         let data = L.monthChart(months: 6)
-        SectionLabel(text: "Income vs expenses · last 6 months · tap a month")
+        SectionLabel(text: "Last 6 months")
         IncomeSpendChart(data: data, height: 220, selection: $trendLabel).mtCard()
         if let lbl = trendLabel, let m = data.first(where: { IncomeSpendChart.label($0.key) == lbl }) {
             let rows = L.rows.filter { $0.date.hasPrefix(m.key) }
@@ -378,7 +374,7 @@ struct InsightsView: View {
             .mtCard(padding: 16)
             .id("trendDetail")
         } else {
-            Text("Tap a month in the chart to see what came in and went out.").font(.system(size: 13)).foregroundStyle(Color.mtTxt3).padding(.horizontal, 4)
+            Text("Tap a month for details.").font(.system(size: 13)).foregroundStyle(Color.mtTxt3).padding(.horizontal, 4)
         }
     }
 }
@@ -410,7 +406,7 @@ struct CategoryDrill: View {
                     }
                 }
                 .mtCard(padding: 16)
-                SectionLabel(text: "Shops · tap one to filter")
+                SectionLabel(text: "Shops")
                 VStack(spacing: 0) {
                     ForEach(Array(shops.enumerated()), id: \.element.key) { i, s in
                         if i > 0 { Divider().overlay(Color.mtBorder) }

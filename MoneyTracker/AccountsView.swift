@@ -89,9 +89,9 @@ struct AccountForm: View {
             hintBox
         } header: { Text("Balance") } footer: {
             Text(balMode == "today"
-                 ? "What this account shows right now — the starting balance is worked out from your transactions, so every past day is right too."
+                 ? "The balance this account shows today. The starting balance is worked out from your transactions."
                  : isBank ? "Balance before the first synced transaction."
-                 : "What the account had on that date. Anything older is already included — it stays in your history but won't change the balance again.")
+                 : "The balance on that date. Older transactions stay in your history but don't change the balance.")
         }
     }
 
@@ -103,7 +103,7 @@ struct AccountForm: View {
             if hasDate { DatePicker("Owed on", selection: $startDate, displayedComponents: .date) }
             hintBox
         } header: { Text("Balance") } footer: {
-            Text("Easiest: copy your last statement — its balance, and the day after it closed. Earlier bill payments from your bank are then already included, so they aren't counted again.")
+            Text("Tip: use your last statement. Enter its balance and the day after it closed, so earlier bill payments aren't counted twice.")
         }
         Section {
             Stepper("Statement day: \(statementDay)", value: $statementDay, in: 1...31)

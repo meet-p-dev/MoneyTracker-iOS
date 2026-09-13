@@ -48,14 +48,14 @@ struct CardDetailView: View {
                         stat("Unbilled", Fmt.money(s.unbilled), .primary)
                         stat("Available", Fmt.money(max(s.available, 0)), s.util >= 0.7 ? .mtAmber : .mtGreen)
                     }
-                    Text("Statement is what's owed from the bill that closed \(Fmt.shortDay(s.close)). Unbilled is what you've charged since — it lands on the next bill, closing \(Fmt.shortDay(s.nextClose)).")
+                    Text("Statement is the bill that closed \(Fmt.shortDay(s.close)). Unbilled is what you've spent since, which goes on the next bill (\(Fmt.shortDay(s.nextClose))).")
                         .font(.system(size: 12)).foregroundStyle(Color.mtTxt2).frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(spacing: 10) {
                         Image(systemName: "clock.fill").foregroundStyle(s.overdue ? Color.mtRed : s.dueSoon ? .orange : Color.mtTxt2)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(dueText(s)).font(.system(size: 14, weight: .semibold)).foregroundStyle(s.overdue ? Color.mtRed : s.dueSoon ? .orange : Color.mtTxt2)
-                            Text(payFrom?.isSynced == true ? "Paid from \(payFrom!.name) — picked up by bank sync"
+                            Text(payFrom?.isSynced == true ? "Paid from \(payFrom!.name) via bank sync"
                                  : card.autopay && payFrom != nil ? "Auto-pay on from \(payFrom!.name)"
                                  : payFrom != nil ? "Pays from \(payFrom!.name)" : "Utilisation: \(CardMath.utilLabel(s.util))")
                                 .font(.system(size: 12)).foregroundStyle(Color.mtTxt2)
@@ -133,7 +133,7 @@ struct CardDetailView: View {
     }
 
     private func dueText(_ s: CardMath.Stats) -> String {
-        if s.amountDue <= 0 { return s.statementBalance > 0 ? "Statement cleared — nothing due" : "Nothing billed yet" }
+        if s.amountDue <= 0 { return s.statementBalance > 0 ? "Paid in full" : "Nothing billed yet" }
         if s.overdue { return "Overdue by \(abs(s.daysToDue)) day\(abs(s.daysToDue) == 1 ? "" : "s")" }
         if s.daysToDue == 0 { return "Due today" }
         return "Due in \(s.daysToDue) day\(s.daysToDue == 1 ? "" : "s") · \(Fmt.shortDay(s.due))"

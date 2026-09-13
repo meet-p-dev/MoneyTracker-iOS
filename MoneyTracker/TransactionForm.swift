@@ -288,11 +288,11 @@ struct TransactionForm: View {
     }
     private var kindHelp: String {
         switch type {
-        case "expense": "Money you spent — counts in your spending."
-        case "income": "Money you earned — salary, freelance."
-        case "credit": "Money in that isn't income — a friend paying you back, a refund."
-        case "debit": "Money out that isn't spending — e.g. to your own account, paying someone back."
-        default: "Moving money between your own accounts — e.g. paying your credit card from your bank."
+        case "expense": "Money you spent."
+        case "income": "Money you earned, like salary."
+        case "credit": "Money back, like a refund or a friend paying you back."
+        case "debit": "Money out that isn't spending, like paying someone back."
+        default: "Between your own accounts, like paying your credit card."
         }
     }
 
@@ -306,10 +306,10 @@ struct TransactionForm: View {
         for id in [accountId, type == "transfer" ? toAccountId : ""] where !id.isEmpty {
             guard let a = accounts.first(where: { $0.id == id }) else { continue }
             if !a.ibDate.isEmpty && day < a.ibDate {
-                out.append("Before \(a.name)'s starting date (\(Fmt.shortDay(a.ibDate))) — it stays in your history but won't change \(a.name)'s balance.")
+                out.append("Before \(a.name)'s starting date (\(Fmt.shortDay(a.ibDate))). It won't change \(a.name)'s balance.")
             }
             if existing == nil && a.isSynced {
-                out.append("\(a.name) syncs from your bank. If this happened there, it will appear by itself — adding it by hand counts it twice.")
+                out.append("\(a.name) syncs from your bank. If this happened there, it will show up on its own. Adding it here counts it twice.")
             }
         }
         return out

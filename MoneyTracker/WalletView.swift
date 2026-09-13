@@ -90,7 +90,6 @@ struct AccountsSection: View {
             let cards = accounts.filter(\.isCredit)
             if !cards.isEmpty {
                 SectionLabel(text: "Credit cards")
-                TipView(CardTip())
                 ForEach(cards) { c in
                     Button { cardSheet = c } label: { CardTile(card: c, s: L.cardStats(c.snap)) }
                         .buttonStyle(.press)

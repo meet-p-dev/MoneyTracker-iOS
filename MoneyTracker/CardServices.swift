@@ -41,11 +41,11 @@ enum PayBill {
     /// — when the money comes from a bank-synced account — tell you to pay in your bank app.
     static func outcome(card: Account, accounts: [Account], stats: CardMath.Stats) -> Outcome {
         if let pf = accounts.first(where: { $0.id == card.payFromId }), pf.isSynced {
-            return .payInBank("Pay it from \(pf.name) in your bank app — it appears here after the next sync.")
+            return .payInBank("Pay it from \(pf.name) in your bank app. It shows up here after the next sync.")
         }
         let from = card.payFromId.isEmpty ? (accounts.first { !$0.isCredit && !$0.isSynced && $0.id != card.id }?.id ?? "") : card.payFromId
         if from.isEmpty && accounts.contains(where: \.isSynced) {
-            return .payInBank("Pay it in your bank app — it appears here after the next sync.")
+            return .payInBank("Pay it in your bank app. It shows up here after the next sync.")
         }
         return .prefill(TxPrefill(amount: (stats.amountDue * 100).rounded() / 100, merchant: "\(card.name) bill",
                                   accountId: from, toAccountId: card.id, notes: "Statement of \(stats.close)"))

@@ -3,6 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    var embedded = false          // pushed from Profile: no own navigation stack or Done button
     @Environment(\.modelContext) private var ctx
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appLockEnabled") private var appLockEnabled = false
@@ -16,14 +17,17 @@ struct SettingsView: View {
     @Environment(Router.self) private var router
 
     var body: some View {
-        NavigationStack {
+        if embedded { content } else { NavigationStack { content } }
+    }
+
+    private var content: some View {
             Form {
                 Section {
-                    Button { showHow = true } label: { Label("How MoneyTrack works", systemImage: "point.3.connected.trianglepath.dotted") }
+                    Button { showHow = true } label: { Label("How MoneyTrack works", systemImage: "questionmark.circle") }
                     Button {
-                        dismiss()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { router.showTour = true }
-                    } label: { Label("Show the welcome tour", systemImage: "sparkles") }
+                        if embedded { router.showProfile = false } else { dismiss() }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { router.showTour = true }
+                    } label: { Label("Replay the intro", systemImage: "play.circle") }
                     Button {
                         UserDefaults.standard.set(true, forKey: "mt-reset-tips")
                         tipsNote = "Tips will show again the next time you open the app."
@@ -35,7 +39,7 @@ struct SettingsView: View {
                             Text(CloudSync.shared.signedIn ? "On" : "Off").foregroundStyle(CloudSync.shared.signedIn ? .green : .secondary)
                         } label: { Label("Bank sync", systemImage: "building.columns") }
                     }
-                } footer: { Text("Your bank transactions, the same as in the web app — sign in once.") }
+                } footer: { Text("Uses the same account as the web app.") }
                 Section("Data backup") {
                     Button {
                         do {
@@ -46,12 +50,12 @@ struct SettingsView: View {
                             exportURL = url
                         } catch { importResult = "Export failed: \(error.localizedDescription)" }
                     } label: {
-                        Label("Export backup (JSON)", systemImage: "square.and.arrow.up")
+                        Label("Export backup", systemImage: "square.and.arrow.up")
                     }
                     Button {
                         showImporter = true
                     } label: {
-                        Label("Restore a backup (from the web app too)", systemImage: "square.and.arrow.down")
+                        Label("Restore backup", systemImage: "square.and.arrow.down")
                     }
                     if let importResult {
                         Text(importResult).font(.footnote).foregroundStyle(.secondary)
@@ -62,7 +66,7 @@ struct SettingsView: View {
                         ForEach(Regions.all) { r in Text("\(r.flag) \(r.country) · \(r.sym)").tag(r.id) }
                     }
                     .onChange(of: regionId) { _, v in Regions.currentId = v }
-                } footer: { Text("Changes the currency symbol and how amounts are written — e.g. 1.234,56 € or $1,234.56.") }
+                } footer: { Text("Sets the currency and number format, e.g. 1.234,56 € or $1,234.56.") }
                 Section("Security") {
                     Toggle(isOn: $appLockEnabled) {
                         Label("App Lock (Face ID)", systemImage: "faceid")
@@ -77,10 +81,10 @@ struct SettingsView: View {
                     LabeledContent("Version", value: "11.8 (native)")
                 }
             }
-            .navigationTitle("Settings & Data")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                if !embedded { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
                 switch result {
@@ -92,7 +96,7 @@ struct SettingsView: View {
                         defer { url.stopAccessingSecurityScopedResource() }
                         let data = try Data(contentsOf: url)
                         let n = try BackupService.importBackup(data, into: ctx)
-                        importResult = "Imported \(n) records ✓"
+                        importResult = "Imported \(n) records."
                         Haptic.success()
                     } catch {
                         importResult = "Import failed: \(error.localizedDescription)"
@@ -112,7 +116,6 @@ struct SettingsView: View {
                     importResult = "All data cleared"
                 }
             }
-        }
     }
 }
 

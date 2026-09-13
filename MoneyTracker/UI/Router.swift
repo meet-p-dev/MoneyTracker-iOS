@@ -11,6 +11,7 @@ final class Router {
     var tab: AppTab = .home
     var showAdd = false
     var showTour = false
+    var showProfile = false
     // Activity filters
     var activityType = ""
     var activitySearch = ""

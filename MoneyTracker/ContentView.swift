@@ -22,6 +22,7 @@ struct ContentView: View {
         .overlay(alignment: .bottom) { GlassTabBar(router: router).ignoresSafeArea(.keyboard, edges: .bottom) }
         .tint(.mtAcc)
         .sheet(isPresented: $router.showAdd) { TransactionForm(existing: nil) }
+        .sheet(isPresented: $router.showProfile) { ProfileView().environment(router) }
         .fullScreenCover(isPresented: $router.showTour) {
             TourView { action in
                 tourSeen = true
