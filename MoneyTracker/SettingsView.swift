@@ -77,6 +77,14 @@ struct SettingsView: View {
                         Label("Clear all data", systemImage: "trash")
                     }
                 }
+                Section("Legal") {
+                    Link(destination: URL(string: "https://meet-p-dev.github.io/refactored-octo-tribble/legal/privacy.html")!) {
+                        Label("Privacy policy", systemImage: "hand.raised")
+                    }
+                    Link(destination: URL(string: "https://meet-p-dev.github.io/refactored-octo-tribble/legal/terms.html")!) {
+                        Label("Terms of use", systemImage: "doc.text")
+                    }
+                }
                 Section {
                     LabeledContent("Version", value: "11.8 (native)")
                 }
