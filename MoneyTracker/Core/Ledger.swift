@@ -85,7 +85,7 @@ struct Decision {
 struct Ledger {
     let accounts: [AccSnap]
     let rows: [Row]
-    private let byId: [String: AccSnap]
+    let byId: [String: AccSnap]
 
     init(accounts: [AccSnap], raw: [Row], decisions: [String: JSONValue] = [:], shares: [String: Double] = [:],
          payeeStats: [String: JSONValue] = [:], ownerName: String = "") {

@@ -1,22 +1,31 @@
 import SwiftUI
 import SwiftData
+
+// The app shell: iOS 26's floating Liquid Glass tab bar with the web app's five places.
+// The middle "+" isn't a screen — tapping it opens the add sheet from wherever you are.
 struct ContentView: View {
-    @State private var showAdd = false
+    @Environment(\.modelContext) private var ctx
+    @State private var router = Router()
 
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
-            ActivityView()
-                .tabItem { Label("Activity", systemImage: "list.bullet") }
-            PeopleView()
-                .tabItem { Label("People", systemImage: "person.2.fill") }
-            GoalsView()
-                .tabItem { Label("Goals", systemImage: "target") }
-            AnalyticsView()
-                .tabItem { Label("Analytics", systemImage: "chart.pie.fill") }
+        TabView(selection: $router.tab) {
+            Tab("Home", systemImage: "house.fill", value: AppTab.home) { HomeView() }
+            Tab("Activity", systemImage: "list.bullet", value: AppTab.activity) { ActivityView() }
+            Tab("Add", systemImage: "plus.circle.fill", value: AppTab.add) { Color.mtBg }
+            Tab("Insights", systemImage: "chart.pie.fill", value: AppTab.insights) { InsightsView() }
+            Tab("Wallet", systemImage: "wallet.bifold.fill", value: AppTab.wallet) { WalletView() }
         }
-        .tint(Color(hex: "#0a84ff"))
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tint(.mtAcc)
+        .environment(router)
+        .onChange(of: router.tab) { old, new in
+            guard new == .add else { return }
+            router.tab = old == .add ? .home : old
+            router.showAdd = true
+            Haptic.tap()
+        }
+        .sheet(isPresented: $router.showAdd) { TransactionForm(existing: nil).environment(router) }
+        .task { CardAutopay.run(ctx: ctx) }
     }
 }
 
