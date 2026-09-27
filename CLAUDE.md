@@ -25,6 +25,8 @@ deployment target 26.5. It has feature parity with web V11.8. Bundle id
   web's JS (`node`). Never commit the backup or its output.
 
 ## Rules (on top of core.md)
+- **`Core/Fusion.swift` has no web twin** (Apple Pay taps are iOS only). It must never change
+  what `Ledger` computes for bank rows. Re-run its replay test after changing it.
 - **The web app is the reference for numbers.** `Core/Classifier.swift`, `CardMath.swift`,
   `Merchants.swift` and `Ledger.swift` are line-for-line ports of the web's `lib/*.js`. Change
   them together and re-verify. `Core/JSRegex.swift` emulates JavaScript's ASCII `\b`, so

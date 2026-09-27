@@ -171,6 +171,7 @@ enum BackupService {
         try? ctx.delete(model: Txn.self); try? ctx.delete(model: Account.self)
         try? ctx.delete(model: Goal.self); try? ctx.delete(model: RecurringTxn.self)
         try? ctx.delete(model: Debt.self); try? ctx.delete(model: Budget.self)
+        try? ctx.delete(model: Capture.self); TapSettle.resetMemory()
         LearningStore.shared.clear()
         try? ctx.save()
     }

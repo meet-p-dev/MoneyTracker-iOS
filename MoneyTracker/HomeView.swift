@@ -14,6 +14,7 @@ struct HomeView: View {
     @Query private var budgets: [Budget]
     @Query private var goals: [Goal]
     @Query(sort: \Debt.date, order: .reverse) private var debts: [Debt]
+    @Query(sort: \Capture.at, order: .reverse) private var caps: [Capture]
     @AppStorage("mt-debt-banner-seen") private var debtBannerSeen = false
     @AppStorage("mt-ios-checklist-hidden") private var checklistHidden = false
     @State private var editTx: Txn?
@@ -23,6 +24,8 @@ struct HomeView: View {
     @State private var explain: Explanation?
     @State private var showBankSync = false
     @State private var showHowItWorks = false
+    @State private var showTaps = false
+    @State private var showApplePay = false
     private let balanceTip = BalanceTip()
 
     private var monthKey: String { Fmt.monthKey() }
@@ -73,6 +76,8 @@ struct HomeView: View {
             .sheet(item: $explain) { ExplainSheet(e: $0) }
             .sheet(isPresented: $showBankSync) { NavigationStack { BankSyncView() } }
             .sheet(isPresented: $showHowItWorks) { HowItWorksView() }
+            .sheet(isPresented: $showTaps) { TapReviewSheet() }
+            .sheet(isPresented: $showApplePay) { NavigationStack { ApplePayView() } }
         }
     }
 
@@ -95,6 +100,10 @@ struct HomeView: View {
                     Text("\(accounts.count) account\(accounts.count == 1 ? "" : "s") ›").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.mtAcc)
                     if L.creditOwed > 0 {
                         Text("\(Fmt.money(L.assets)) cash − \(Fmt.money(L.creditOwed)) credit").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Color.mtTxt3)
+                    }
+                    let pending = TapText.pending(caps, accounts)
+                    if !pending.isEmpty {
+                        Text("−\(Fmt.money(pending.reduce(0) { $0 + $1.amount })) pending with your bank").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Color.mtAmber)
                     }
                 }
             }
@@ -209,6 +218,11 @@ struct HomeView: View {
         if review > 0 {
             list.append(Attention(id: "review", tone: .mtAcc, icon: "tray.full.fill", title: "\(review) transaction\(review == 1 ? "" : "s") to review",
                                   sub: "Confirm which incoming money is really income", cta: "Review") { showReview = true })
+        }
+        let taps = TapText.needsYou(caps, accounts).count
+        if taps > 0 {
+            list.append(Attention(id: "taps", tone: .mtAcc, icon: "wave.3.right", title: "\(taps) Apple Pay payment\(taps == 1 ? "" : "s") to check",
+                                  sub: "One quick answer each", cta: "Check") { showTaps = true })
         }
         let upcoming = stats.filter { $0.1.dueSoon && !$0.1.overdue }
         if let u = upcoming.first {
@@ -365,6 +379,19 @@ struct HomeView: View {
         let recent = Array(L.rows.sorted { $0.date > $1.date }.prefix(6))
         return VStack(spacing: 0) {
             SectionLabel(text: "Recent", action: "See all") { router.goActivity() }.padding(.bottom, 8)
+            let pending = Array(TapText.pending(caps, accounts).prefix(3))
+            if !pending.isEmpty {
+                Button { showApplePay = true } label: {
+                    VStack(spacing: 0) {
+                        ForEach(Array(pending.enumerated()), id: \.element.id) { i, c in
+                            if i > 0 { Divider().overlay(Color.mtBorder).padding(.leading, 65) }
+                            TapRow(c: c, accounts: accounts).padding(.horizontal, 15).padding(.vertical, 11)
+                        }
+                    }
+                    .mtCard(padding: 0)
+                }
+                .buttonStyle(.press).padding(.bottom, 8)
+            }
             if recent.isEmpty {
                 EmptyCard(icon: "list.bullet", title: "No transactions yet",
                           message: accounts.isEmpty ? "Add an account first, then use + to log spending." : "Use + to add one, or turn on bank sync.")

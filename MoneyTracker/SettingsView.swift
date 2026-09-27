@@ -40,6 +40,9 @@ struct SettingsView: View {
                         } label: { Label("Bank sync", systemImage: "building.columns") }
                     }
                 } footer: { Text("Uses the same account as the web app.") }
+                Section {
+                    NavigationLink { ApplePayView() } label: { Label("Apple Pay payments", systemImage: "wave.3.right") }
+                } footer: { Text("Log in-store Apple Pay payments by themselves.") }
                 Section("Data backup") {
                     Button {
                         do {

@@ -255,6 +255,8 @@ final class CloudSync {
             let conns: [BankConnection] = try await get("mt_bank_connections?select=id,bank_name,status,last_synced_at,last_sync_error,valid_until&order=created_at.desc")
             lastAdded = try merge(ctx: ctx, accs: accs, txs: txs)
             connections = conns; lastSync = Date(); lastError = nil
+            TapSettle.noteSync(conns)
+            TapSettle.run(ctx: ctx)       // new bank rows may settle waiting Apple Pay taps
         } catch {
             lastError = (error as? CloudError)?.message ?? error.localizedDescription
         }

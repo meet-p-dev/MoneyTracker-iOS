@@ -47,5 +47,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .modelContainer(for: [Account.self, TxCategory.self, Txn.self, Goal.self,
-                              RecurringTxn.self, Debt.self, Budget.self], inMemory: true)
+                              RecurringTxn.self, Debt.self, Budget.self, Capture.self], inMemory: true)
 }

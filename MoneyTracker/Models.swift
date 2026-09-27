@@ -73,6 +73,7 @@ final class Txn {
     var splitPeople: Int
     var splitSettled: Bool
     var isBank: Bool = false  // synced from the bank (web `_bank`)
+    var source: String = ""   // "" typed or synced · "tap" added from an Apple Pay tap
 
     init(id: String = UUID().uuidString, type: String, amount: Double, merchant: String,
          categoryId: String, accountId: String, toAccountId: String = "", notes: String = "",
@@ -88,6 +89,44 @@ final class Txn {
         Row(id: id, type: type, rawType: type, amount: amount, merchant: merchant, categoryId: categoryId,
             rawCategoryId: categoryId, accountId: accountId, toAccountId: toAccountId, notes: notes,
             date: date, isBank: isSynced)
+    }
+}
+
+/// An Apple Pay tap caught by the Wallet automation (see TapSettle). It is evidence, not a
+/// transaction: on a bank-synced account it waits as "Pending" until the bank books the same
+/// purchase, and the bank's row wins. On an account you manage by hand it becomes a normal
+/// expense straight away.
+@Model
+final class Capture {
+    @Attribute(.unique) var id: String
+    var at: Date                // when the automation ran
+    var day: String             // local yyyy-MM-dd of `at`
+    var cents: Int              // 0 = Wallet sent no amount
+    var cur: String             // ISO code, "" = unknown
+    var merchant: String
+    var name: String            // Wallet's transaction name (often empty)
+    var card: String            // Wallet card name; stays on this iPhone
+    var accountId: String       // "" = card not linked to an account yet
+    var state: String           // pending | check | settled | orphan | added | kept | dismissed
+    var linkId: String = ""     // check/settled: the bank row · added/kept: the transaction it became
+    var p: Double = 0           // match confidence
+    var reason: String = ""     // why it matched, in plain words
+    var categoryId: String = "" // a category you picked on the tap
+    var wroteDecision: Bool = false
+    var raw: String = ""        // exactly what Wallet sent, for the log
+
+    init(id: String = UUID().uuidString, at: Date, cents: Int, cur: String, merchant: String, name: String,
+         card: String, accountId: String, state: String = "pending") {
+        self.id = id; self.at = at; self.day = Fmt.day.string(from: at); self.cents = cents; self.cur = cur
+        self.merchant = merchant; self.name = name; self.card = card; self.accountId = accountId; self.state = state
+    }
+
+    var amount: Double { Double(cents) / 100 }
+    var title: String { let m = merchant.trimmed.isEmpty ? name.trimmed : merchant.trimmed; return m.isEmpty ? "Apple Pay" : m }
+    var isOpen: Bool { state == "pending" || state == "check" }
+    var evidence: Evidence {
+        Evidence(id: id, at: at, day: day, cents: cents > 0 ? cents : nil, cur: cur.isEmpty ? nil : cur,
+                 merchant: merchant.trimmed.isEmpty ? name : merchant, card: card, accountId: accountId.isEmpty ? nil : accountId)
     }
 }
 
@@ -161,6 +200,19 @@ final class Budget {
     init(categoryId: String, limit: Double) {
         self.categoryId = categoryId; self.limit = limit
     }
+}
+
+/// One store for the app and for App Intents that run in the background (a Wallet tap can
+/// start MoneyTrack without showing it).
+enum AppData {
+    static let container: ModelContainer = {
+        do {
+            return try ModelContainer(for: Account.self, TxCategory.self, Txn.self, Goal.self, RecurringTxn.self,
+                                      Debt.self, Budget.self, Capture.self)
+        } catch {
+            fatalError("Could not create SwiftData container: \(error)")
+        }
+    }()
 }
 
 extension Ledger {

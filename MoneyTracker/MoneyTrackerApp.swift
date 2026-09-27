@@ -9,16 +9,11 @@ struct MoneyTrackerApp: App {
     @State private var locked = false
 
     init() {
-        do {
-            container = try ModelContainer(for: Account.self, TxCategory.self, Txn.self,
-                                           Goal.self, RecurringTxn.self, Debt.self, Budget.self)
-            BackupService.seedIfEmpty(ctx: container.mainContext)
-            BackupService.migrateIfNeeded(ctx: container.mainContext)
-            _ = CloudSync.shared          // restores your sign-in and hooks learning → cloud
-            MTTips.configure()            // Apple's tip bubbles (Settings → Show tips again resets them)
-        } catch {
-            fatalError("Could not create SwiftData container: \(error)")
-        }
+        container = AppData.container
+        BackupService.seedIfEmpty(ctx: container.mainContext)
+        BackupService.migrateIfNeeded(ctx: container.mainContext)
+        _ = CloudSync.shared          // restores your sign-in and hooks learning → cloud
+        MTTips.configure()            // Apple's tip bubbles (Settings → Show tips again resets them)
     }
 
     var body: some Scene {
@@ -34,6 +29,7 @@ struct MoneyTrackerApp: App {
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .active:
+                    TapSettle.run(ctx: container.mainContext)
                     Task { await CloudSync.shared.launchSync(ctx: container.mainContext) }
                 case .background:
                     if appLockEnabled { locked = true }
