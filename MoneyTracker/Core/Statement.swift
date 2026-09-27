@@ -44,7 +44,8 @@ struct StatementError: LocalizedError {
 }
 
 enum StatementParser {
-    static func parse(_ data: Data, filename: String = "") throws -> Statement {
+    /// - Parameter pdfText: turns a PDF into its text (PDFKit in the app; Core stays plain Swift).
+    static func parse(_ data: Data, filename: String = "", pdfText: ((Data) -> String?)? = nil) throws -> Statement {
         let text = decode(data)
         let head = String(text.prefix(4000))
         var st: Statement
@@ -53,9 +54,12 @@ enum StatementParser {
         } else if head.contains(":20:") && text.contains(":61:") {
             st = try MT940.parse(text)
         } else if filename.lowercased().hasSuffix(".pdf") || data.starts(with: [0x25, 0x50, 0x44, 0x46]) {
-            throw StatementError(message: "PDF statements aren't supported yet. Export a CSV from your bank instead.")
+            guard let text = pdfText?(data), !text.trimmed.isEmpty else {
+                throw StatementError(message: "This PDF has no readable text (maybe a scan). Export a CSV from your bank instead.")
+            }
+            st = PDFStatement.parse(text)
         } else if data.starts(with: [0x50, 0x4B, 0x03, 0x04]) {
-            throw StatementError(message: "This is an Excel file. Export it as CSV, or pick CSV in your bank's export.")
+            st = try CSV.parse(rows: try XLSX.rows(data), format: "Excel")
         } else {
             st = try CSV.parse(text)
         }
@@ -87,6 +91,16 @@ enum StatementParser {
             return (1..<m.numberOfRanges).map { i in Range(m.range(at: i), in: t).flatMap { Int(t[$0]) } }
         }
         var y = 0, mo = 0, d = 0, h: Int?, mi: Int?
+        // Excel stores dates as days since 30 Dec 1899 (the fraction is the time of day).
+        if let serial = Double(t), serial > 20000, serial < 80000, t.allSatisfy({ $0.isNumber || $0 == "." }) {
+            var c = DateComponents(); c.year = 1899; c.month = 12; c.day = 30
+            let cal = Calendar(identifier: .gregorian)
+            guard let base = cal.date(from: c) else { return nil }
+            let whole = Int(serial), mins = Int(((serial - Double(whole)) * 1440).rounded())
+            guard let dd = cal.date(byAdding: .day, value: whole, to: base) else { return nil }
+            let p = cal.dateComponents([.year, .month, .day], from: dd)
+            return (CardMath.ymd(p.year!, p.month!, p.day!), mins > 0 ? String(format: "%02d:%02d", mins / 60, mins % 60) : "")
+        }
         if let g = groups(reISO) { y = g[0]!; mo = g[1]!; d = g[2]!; h = g[3]; mi = g[4] }
         else if let g = groups(reDE) { d = g[0]!; mo = g[1]!; y = g[2]!; h = g[3]; mi = g[4] }
         else if let g = groups(reSlashISO) { y = g[0]!; mo = g[1]!; d = g[2]! }
@@ -193,30 +207,37 @@ enum CSV {
         return rows
     }
 
+    /// The header row: the first of the top 40 rows that names a date and an amount column.
+    static func header(_ rows: [[String]]) -> (index: Int, map: [Role: Int])? {
+        for (i, r) in rows.prefix(40).enumerated() {
+            let m = mapHeader(r)
+            if (m[.date] != nil || m[.started] != nil) && (m[.amount] != nil || (m[.debit] != nil && m[.credit] != nil)) { return (i, m) }
+        }
+        return nil
+    }
+
     static func parse(_ text: String) throws -> Statement {
-        let lines = text.split(whereSeparator: \.isNewline).prefix(40).map(String.init)
         // The delimiter that splits the header into the most known columns wins.
-        var best: (sep: Character, rows: [[String]], header: Int, map: [Role: Int])?
+        var best: (rows: [[String]], h: Int, map: [Role: Int])?
         for sep in [";", ",", "\t"] as [Character] {
-            for (i, l) in lines.enumerated() {
-                let cells = split(l, sep).first ?? []
-                let m = mapHeader(cells)
-                let ok = (m[.date] != nil || m[.started] != nil) && (m[.amount] != nil || (m[.debit] != nil && m[.credit] != nil))
-                if ok && m.count > (best?.map.count ?? 0) {
-                    best = (sep, [], i, m)
-                }
-                if ok { break }
-            }
+            let rows = split(text, sep)
+            if let h = header(rows), h.map.count > (best?.map.count ?? 0) { best = (rows, h.index, h.map) }
         }
-        guard var b = best else { throw StatementError(message: "Couldn't find the date and amount columns in this file.") }
-        b.rows = split(text, b.sep)
-        // Find the header row again in the fully split rows (quoted cells may hold line breaks).
-        guard let h = b.rows.firstIndex(where: { mapHeader($0).count == b.map.count && mapHeader($0) == b.map }) else {
-            throw StatementError(message: "Couldn't read this file.")
-        }
+        guard let b = best else { throw StatementError(message: "Couldn't find the date and amount columns in this file.") }
+        return parse(rows: b.rows, header: b.h, map: b.map, format: "CSV")
+    }
+
+    /// Rows of cells from a spreadsheet (Excel) or a split CSV.
+    static func parse(rows: [[String]], format: String) throws -> Statement {
+        guard let h = header(rows) else { throw StatementError(message: "Couldn't find the date and amount columns in this file.") }
+        return parse(rows: rows, header: h.index, map: h.map, format: format)
+    }
+
+    private static func parse(rows: [[String]], header h: Int, map: [Role: Int], format: String) -> Statement {
+        let b = (rows: rows, map: map)
         let header = b.rows[h]
         let normHeader = header.map { StatementParser.norm($0) }
-        var st = Statement(format: "CSV")
+        var st = Statement(format: format)
         st.bank = guessBank(normHeader)
         // Metadata lines above the header (ING, DKB) often carry the IBAN.
         for r in b.rows[..<h] {

@@ -114,7 +114,9 @@ final class Capture {
     var reason: String = ""     // why it matched, in plain words
     var categoryId: String = "" // a category you picked on the tap
     var wroteDecision: Bool = false
-    var raw: String = ""        // exactly what Wallet sent, for the log
+    var raw: String = ""        // exactly what Wallet or the notification sent, for the log
+    var src: String = "tap"     // "tap" (Wallet automation) | "note" (a bank notification)
+    var dir: String = "out"     // "in" when a notification says money came in
 
     init(id: String = UUID().uuidString, at: Date, cents: Int, cur: String, merchant: String, name: String,
          card: String, accountId: String, state: String = "pending") {
@@ -127,7 +129,7 @@ final class Capture {
     var isOpen: Bool { state == "pending" || state == "check" }
     var evidence: Evidence {
         Evidence(id: id, at: at, day: day, cents: cents > 0 ? cents : nil, cur: cur.isEmpty ? nil : cur,
-                 merchant: merchant.trimmed.isEmpty ? name : merchant, card: card, accountId: accountId.isEmpty ? nil : accountId)
+                 merchant: merchant.trimmed.isEmpty ? name : merchant, card: card, accountId: accountId.isEmpty ? nil : accountId, dir: dir)
     }
 }
 

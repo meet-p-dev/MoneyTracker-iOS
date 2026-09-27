@@ -42,8 +42,10 @@ struct SettingsView: View {
                 } footer: { Text("Uses the same account as the web app.") }
                 Section {
                     NavigationLink { ApplePayView() } label: { Label("Apple Pay payments", systemImage: "wave.3.right") }
+                    NavigationLink { NotificationCaptureView() } label: { Label("Bank notifications", systemImage: "bell.badge") }
                     StatementImportButton()
-                } footer: { Text("Log in-store Apple Pay payments by themselves, and bring in your bank's statements (CSV, camt or MT940). Everything stays on this iPhone.") }
+                    NavigationLink { StatementGuideView() } label: { Label("Your banks and how to export", systemImage: "building.2") }
+                } footer: { Text("Log in-store Apple Pay payments by themselves, and bring in your bank's statements (CSV, Excel, PDF, camt or MT940). Everything stays on this iPhone.") }
                 Section("Data backup") {
                     Button {
                         do {

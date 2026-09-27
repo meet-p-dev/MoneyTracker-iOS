@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import PDFKit
 
 // Statement Drop: pick a bank's export, see what it changes, import.
 
@@ -18,7 +19,7 @@ struct StatementImportButton: View {
     var body: some View {
         Button { picking = true } label: { Label(label, systemImage: "doc.text") }
             .sheet(isPresented: $picking) {
-                DocumentPicker(types: [.commaSeparatedText, .plainText, .xml, .data]) { url in
+                DocumentPicker(types: StatementImport.fileTypes) { url in
                     picking = false
                     guard let url else { return }
                     let ok = url.startAccessingSecurityScopedResource()
@@ -95,7 +96,7 @@ struct StatementImportView: View {
             .onChange(of: accountId) { _, id in recompute(id) }
             .task {
                 do {
-                    let s = try StatementParser.parse(data, filename: filename)
+                    let s = try StatementParser.parse(data, filename: filename, pdfText: { PDFDocument(data: $0)?.string })
                     st = s
                     accountId = StatementImport.rememberedAccount(s, accounts) ?? ""
                     recompute(accountId)
@@ -165,13 +166,14 @@ struct StatementImportView: View {
         Section {
             Label("\(r.added) added, \(r.confirmed) confirmed", systemImage: "checkmark.circle.fill").foregroundStyle(Color.mtGreen)
             if let c = r.closing {
+                let credit = accounts.first(where: { $0.id == accountId })?.isCredit ?? false
                 if r.matches || fixed {
-                    Text("The balance on \(Fmt.shortDay(c.day)) matches the statement: \(Fmt.money(c.file)).").font(.subheadline)
+                    Text("The balance on \(Fmt.shortDay(c.day)) matches the statement: \(StatementImport.label(c.file, credit: credit)).").font(.subheadline)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("The statement says \(Fmt.money(c.file)) on \(Fmt.shortDay(c.day)). MoneyTrack shows \(Fmt.money(c.app)).")
+                        Text("The statement says \(StatementImport.label(c.file, credit: credit)) on \(Fmt.shortDay(c.day)). MoneyTrack shows \(StatementImport.label(c.app, credit: credit)).")
                             .font(.subheadline)
-                        Text("A difference of \(Fmt.money(c.file - c.app)). Often the starting balance, or rows from before the statement.")
+                        Text("A difference of \(Fmt.money(abs(c.file - c.app))). Often the starting balance, or rows from before the statement.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     if accounts.first(where: { $0.id == accountId })?.isSynced == false {

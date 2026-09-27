@@ -31,3 +31,31 @@ struct LogWalletPaymentIntent: AppIntent {
         return .result()
     }
 }
+
+// The action an iOS 27 Shortcuts "Notification" automation runs when a banking app (Sparkasse,
+// Revolut, Wallet…) shows a notification. It reads the payment out of the text, in the
+// background. Map the automation's App, Title, Subtitle and Body into it.
+struct LogBankNotificationIntent: AppIntent {
+    // App Store Connect rejects intent titles and descriptions that contain "Apple" (error 90626).
+    static let title: LocalizedStringResource = "Log a bank notification"
+    static let description = IntentDescription("Adds the payment from a banking app's notification to MoneyTrack. Use it in a Notification automation.")
+    static let supportedModes: IntentModes = .background
+
+    @Parameter(title: "App") var app: String?
+    @Parameter(title: "Title") var title: String?
+    @Parameter(title: "Subtitle") var subtitle: String?
+    @Parameter(title: "Body") var body: String?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Log the payment in \(\.$body)") {
+            \.$app
+            \.$title
+            \.$subtitle
+        }
+    }
+
+    @MainActor func perform() async throws -> some IntentResult {
+        TapSettle.intakeNote(ctx: AppData.container.mainContext, app: app, title: title, subtitle: subtitle, body: body)
+        return .result()
+    }
+}

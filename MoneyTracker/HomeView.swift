@@ -26,6 +26,9 @@ struct HomeView: View {
     @State private var showHowItWorks = false
     @State private var showTaps = false
     @State private var showApplePay = false
+    @State private var showBanks = false
+    @State private var drift: DriftFix?
+    struct DriftFix: Identifiable { let id: String; let name: String; let file: Double; let app: Double; let credit: Bool }
     private let balanceTip = BalanceTip()
 
     private var monthKey: String { Fmt.monthKey() }
@@ -78,6 +81,14 @@ struct HomeView: View {
             .sheet(isPresented: $showHowItWorks) { HowItWorksView() }
             .sheet(isPresented: $showTaps) { TapReviewSheet() }
             .sheet(isPresented: $showApplePay) { NavigationStack { ApplePayView() } }
+            .sheet(isPresented: $showBanks) { NavigationStack { StatementGuideView(modal: true) } }
+            .confirmationDialog("Match the statement?", isPresented: Binding(get: { drift != nil }, set: { if !$0 { drift = nil } }), presenting: drift) { d in
+                Button("Change the starting balance to match") {
+                    StatementImport.matchStartingBalance(accountId: d.id, file: d.file, app: d.app, ctx: ctx)
+                }
+            } message: { d in
+                Text("\(d.name)'s statement says \(StatementImport.label(d.file, credit: d.credit)), MoneyTrack shows \(StatementImport.label(d.app, credit: d.credit)) for that day. If a row is missing or wrong, fix that row instead.")
+            }
         }
     }
 
@@ -101,9 +112,9 @@ struct HomeView: View {
                     if L.creditOwed > 0 {
                         Text("\(Fmt.money(L.assets)) cash − \(Fmt.money(L.creditOwed)) credit").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Color.mtTxt3)
                     }
-                    let pending = TapText.pending(caps, accounts)
-                    if !pending.isEmpty {
-                        Text("−\(Fmt.money(pending.reduce(0) { $0 + $1.amount })) pending with your bank").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Color.mtAmber)
+                    let pendingNet = TapText.pendingNet(caps, accounts)
+                    if !TapText.pending(caps, accounts).isEmpty {
+                        Text("\(pendingNet >= 0 ? "−" : "+")\(Fmt.money(abs(pendingNet))) pending with your bank").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Color.mtAmber)
                     }
                 }
             }
@@ -149,6 +160,7 @@ struct HomeView: View {
             Step(id: "tx", title: "Log your first transaction", sub: "Use the + button", icon: "plus.circle.fill", done: !txs.isEmpty) { router.showAdd = true },
             Step(id: "budget", title: "Set a monthly budget", sub: "A monthly limit for a category", icon: "chart.pie.fill", done: !budgets.isEmpty) { router.goInsights("budget") },
             Step(id: "goal", title: "Start a savings goal", sub: "Something you're saving for", icon: "target", done: !goals.isEmpty) { router.goWallet("goals") },
+            Step(id: "banks", title: "Choose your banks", sub: "See how each one gets into MoneyTrack", icon: "doc.text.fill", done: !BankGuides.mine.isEmpty) { showBanks = true },
             Step(id: "sync", title: "Turn on bank sync", sub: "Optional. Imports your bank transactions", icon: "building.columns.fill", done: CloudSync.shared.signedIn) { showBankSync = true },
         ]
     }
@@ -223,6 +235,12 @@ struct HomeView: View {
         if taps > 0 {
             list.append(Attention(id: "taps", tone: .mtAcc, icon: "wave.3.right", title: "\(taps) Apple Pay payment\(taps == 1 ? "" : "s") to check",
                                   sub: "One quick answer each", cta: "Check") { showTaps = true })
+        }
+        for d in StatementImport.drift(L) {
+            list.append(Attention(id: "seal-\(d.acc.id)", tone: .mtAmber, icon: "doc.text.magnifyingglass", title: "\(d.acc.name) differs from its statement",
+                                  sub: "Statement \(StatementImport.label(d.file, credit: d.acc.isCredit)) on \(Fmt.shortDay(d.day)), here \(StatementImport.label(d.app, credit: d.acc.isCredit))", cta: "Check") {
+                drift = DriftFix(id: d.acc.id, name: d.acc.name, file: d.file, app: d.app, credit: d.acc.isCredit)
+            })
         }
         let upcoming = stats.filter { $0.1.dueSoon && !$0.1.overdue }
         if let u = upcoming.first {

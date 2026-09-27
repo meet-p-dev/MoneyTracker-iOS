@@ -17,7 +17,7 @@ struct TapRow: View {
                     Text(TapText.badge(c)).font(.system(size: 10, weight: .semibold)).padding(.horizontal, 5).padding(.vertical, 1)
                         .background(TapText.tone(c).opacity(0.14), in: RoundedRectangle(cornerRadius: 6)).foregroundStyle(TapText.tone(c))
                 }
-                Text("\(accounts.first { $0.id == c.accountId }?.name ?? (c.card.isEmpty ? "Apple Pay" : c.card)) · \(Fmt.prettyDay(c.day)), \(c.at.formatted(date: .omitted, time: .shortened))")
+                Text("\(accounts.first { $0.id == c.accountId }?.name ?? (c.card.isEmpty ? "Apple Pay" : c.card)) · \(Fmt.prettyDay(c.day)), \(c.at.formatted(date: .omitted, time: .shortened))\(c.src == "note" ? " · notification" : "")")
                     .font(.system(size: 11)).foregroundStyle(Color.mtTxt2).lineLimit(1)
             }
             Spacer(minLength: 6)
@@ -30,16 +30,18 @@ struct TapRow: View {
 enum TapText {
     static func amount(_ c: Capture) -> String {
         if c.cents == 0 { return "no amount" }
-        if !c.cur.isEmpty && c.cur != TapSettle.home { return "−" + c.amount.formatted(.currency(code: c.cur)) }
-        return "−" + Fmt.money(c.amount)
+        let sign = c.dir == "in" ? "+" : "−"
+        if !c.cur.isEmpty && c.cur != TapSettle.home { return sign + c.amount.formatted(.currency(code: c.cur)) }
+        return sign + Fmt.money(c.amount)
     }
     static func badge(_ c: Capture) -> String {
         switch c.state {
-        case "pending": c.accountId.isEmpty ? "link card" : "pending"
+        case "pending": c.accountId.isEmpty ? (c.src == "note" ? "link app" : "link card") : "pending"
         case "check": "check"
         case "settled": "matched"
         case "orphan": "not booked"
         case "added", "kept": "added"
+        case "merged": "same payment"
         default: "removed"
         }
     }
@@ -57,11 +59,15 @@ enum TapText {
             (c.isOpen && c.accountId.isEmpty) || c.state == "check" || c.state == "orphan" || TapSettle.needsAmount(c, accounts)
         }
     }
-    /// Taps on bank-synced accounts the bank hasn't booked yet: shown next to the balance, never
-    /// inside it. (A tap waiting for your check already has its bank row in the balance.)
+    /// Taps and notifications on bank-synced accounts the bank hasn't booked yet: shown next to
+    /// the balance, never inside it. (One waiting for your check already has its bank row.)
     static func pending(_ caps: [Capture], _ accounts: [Account]) -> [Capture] {
         let feed = Set(accounts.filter(\.isSynced).map(\.id))
         return caps.filter { $0.state == "pending" && $0.cents > 0 && feed.contains($0.accountId) }
+    }
+    /// What's still pending, money out minus money in.
+    static func pendingNet(_ caps: [Capture], _ accounts: [Account]) -> Double {
+        pending(caps, accounts).reduce(0) { $0 + ($1.dir == "in" ? -$1.amount : $1.amount) }
     }
 }
 
@@ -102,7 +108,7 @@ struct TapReviewSheet: View {
                                 }
                             }
                         }
-                    } header: { Text("Which account is this card?") } footer: {
+                    } header: { Text("Which account is this card or app?") } footer: {
                         Text("Asked once per card. Payments from a card on an account you manage by hand become expenses right away.")
                     }
                 }
@@ -217,7 +223,7 @@ struct ApplePayView: View {
     @Query(sort: \Account.sortIndex) private var accounts: [Account]
     @Query(sort: \Capture.at, order: .reverse) private var caps: [Capture]
     @State private var cardMap = TapSettle.memory.cardMap
-    @State private var log = TapSettle.readLog()
+    @State private var log = TapSettle.readLog().filter { $0.src != "note" }
     @State private var showCheck = false
     @State private var confirmClear = false
     #if DEBUG
@@ -228,7 +234,9 @@ struct ApplePayView: View {
 
     var body: some View {
         let needs = TapText.needsYou(caps, accounts).count
-        let cards = Set(cardMap.keys).union(caps.map(\.card)).sorted()
+        let taps = caps.filter { $0.src == "tap" }
+        let noteApps = Set(caps.filter { $0.src == "note" }.map(\.card))
+        let cards = Set(cardMap.keys).subtracting(noteApps).union(taps.map(\.card)).sorted()
         return Form {
             Section {
                 Text("Pay with Apple Pay and the payment appears here by itself. On a bank-synced account it waits as Pending until your bank books it, then the bank's row takes over. On an account you manage by hand it becomes an expense right away.")
@@ -269,10 +277,10 @@ struct ApplePayView: View {
                 } header: { Text("Your cards") } footer: { Text("Card names stay on this iPhone.") }
             }
             Section("Recent payments") {
-                if caps.isEmpty {
+                if taps.isEmpty {
                     Text("No Apple Pay payments yet.").foregroundStyle(.secondary)
                 }
-                ForEach(caps.prefix(30)) { c in
+                ForEach(taps.prefix(30)) { c in
                     VStack(alignment: .leading, spacing: 4) {
                         TapRow(c: c, accounts: accounts)
                         if !c.reason.isEmpty { Text(c.reason).font(.caption2).foregroundStyle(.secondary) }
@@ -312,7 +320,7 @@ struct ApplePayView: View {
                 Button("Log it") {
                     TapSettle.intake(ctx: ctx, merchant: testMerchant, name: nil, card: testCard, amount: nil, code: nil,
                                      text: testAmount + " " + Fmt.currencySymbol)
-                    log = TapSettle.readLog(); cardMap = TapSettle.memory.cardMap
+                    log = TapSettle.readLog().filter { $0.src != "note" }; cardMap = TapSettle.memory.cardMap
                 }
                 Button("Add a demo bank account with 3 bank rows") { demoBank() }
                 Button("Remove the demo bank account", role: .destructive) {
@@ -329,7 +337,7 @@ struct ApplePayView: View {
         .confirmationDialog("Clear the log?", isPresented: $confirmClear) {
             Button("Clear", role: .destructive) { TapSettle.clearLog(); log = [] }
         }
-        .onAppear { log = TapSettle.readLog(); cardMap = TapSettle.memory.cardMap; TapSettle.run(ctx: ctx) }
+        .onAppear { log = TapSettle.readLog().filter { $0.src != "note" }; cardMap = TapSettle.memory.cardMap; TapSettle.run(ctx: ctx) }
     }
 
     #if DEBUG

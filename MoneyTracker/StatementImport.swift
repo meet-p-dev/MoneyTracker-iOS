@@ -1,10 +1,14 @@
 import Foundation
 import SwiftData
+import UniformTypeIdentifiers
 
 // Statement Drop, the app side. Core/Statement.swift reads the file and plans the change;
 // this applies it. Files never leave the phone.
 enum StatementImport {
     private static let mapKey = "mt-statement-accounts"     // file's IBAN or bank → accountId
+    static let fileTypes: [UTType] = [.commaSeparatedText, .tabSeparatedText, .plainText, .xml, .pdf,
+                                      UTType("org.openxmlformats.spreadsheetml.sheet") ?? .data,
+                                      UTType("com.patel.moneytracker.mt940") ?? .data, .data]
 
     static func rememberedAccount(_ st: Statement, _ accounts: [Account]) -> String? {
         let map = UserDefaults.standard.dictionary(forKey: mapKey) as? [String: String] ?? [:]
@@ -73,11 +77,43 @@ enum StatementImport {
         TapSettle.run(ctx: ctx)
         // Check the balance against the statement's own closing balance.
         let accounts = (try? ctx.fetch(FetchDescriptor<Account>())) ?? []
-        if let c = st.closing, let a = accounts.first(where: { $0.id == accountId }), !a.isCredit {
+        // Cards: only a PDF statement says for sure that its closing balance is what you owe.
+        if let c = st.closing, let a = accounts.first(where: { $0.id == accountId }), !a.isCredit || st.format == "PDF" {
             let L = Ledger.build(accounts: accounts, txs: (try? ctx.fetch(FetchDescriptor<Txn>())) ?? [])
             res.closing = (c.day, Double(c.cents) / 100, (L.balance(of: a.snap, on: c.day) * 100).rounded() / 100)
+            setCheckpoint(accountId, day: c.day, cents: c.cents)
         }
         return res
+    }
+
+    // ── The last statement balance per account, checked again on Home ──
+    private static let cpKey = "mt-statement-checkpoints"
+    static func checkpoints() -> [String: (day: String, cents: Int)] {
+        let raw = UserDefaults.standard.dictionary(forKey: cpKey) as? [String: String] ?? [:]
+        return raw.compactMapValues { v in
+            let p = v.split(separator: "|")
+            guard p.count == 2, let c = Int(p[1]) else { return nil }
+            return (String(p[0]), c)
+        }
+    }
+    private static func setCheckpoint(_ accountId: String, day: String, cents: Int) {
+        var raw = UserDefaults.standard.dictionary(forKey: cpKey) as? [String: String] ?? [:]
+        if let old = raw[accountId], old.split(separator: "|").first.map(String.init) ?? "" > day { return }   // keep the newest
+        raw[accountId] = "\(day)|\(cents)"
+        UserDefaults.standard.set(raw, forKey: cpKey)
+    }
+    /// Accounts whose balance no longer matches their last statement.
+    static func drift(_ L: Ledger) -> [(acc: AccSnap, day: String, file: Double, app: Double)] {
+        checkpoints().compactMap { id, cp in
+            guard let a = L.account(id), !a.isBank else { return nil }
+            let app = (L.balance(of: a, on: cp.day) * 100).rounded() / 100, file = Double(cp.cents) / 100
+            return abs(app - file) >= 0.005 ? (a, cp.day, file, app) : nil
+        }.sorted { $0.acc.name < $1.acc.name }
+    }
+
+    /// A balance in words: "78,85 € owed" on a card (its balance is negative when you owe).
+    static func label(_ v: Double, credit: Bool) -> String {
+        credit ? "\(Fmt.money(abs(v))) \(v <= 0 ? "owed" : "in credit")" : Fmt.money(v)
     }
 
     /// Makes the starting balance agree with the statement (hand-managed accounts only).

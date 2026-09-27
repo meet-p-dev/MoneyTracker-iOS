@@ -14,6 +14,7 @@ struct MoneyTrackerApp: App {
         BackupService.migrateIfNeeded(ctx: container.mainContext)
         _ = CloudSync.shared          // restores your sign-in and hooks learning → cloud
         MTTips.configure()            // Apple's tip bubbles (Settings → Show tips again resets them)
+        StatementReminder.refresh()   // keeps the statement reminder's schedule current
     }
 
     var body: some Scene {

@@ -11,6 +11,7 @@ struct ContentView: View {
     @Query private var accounts: [Account]
     @Query private var txs: [Txn]
     @State private var tourAction: TourAction?
+    @State private var openedFile: StatementImportButton.PickedFile?
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -38,6 +39,14 @@ struct ContentView: View {
             case .howItWorks: HowItWorksView()
             }
         }
+        // A statement shared from a banking app or Files ("Open in MoneyTrack").
+        .onOpenURL { url in
+            guard url.isFileURL else { return }
+            let ok = url.startAccessingSecurityScopedResource()
+            defer { if ok { url.stopAccessingSecurityScopedResource() } }
+            if let d = try? Data(contentsOf: url) { openedFile = .init(data: d, name: url.lastPathComponent) }
+        }
+        .sheet(item: $openedFile) { StatementImportView(data: $0.data, filename: $0.name) }
         .onAppear { if !tourSeen && accounts.isEmpty && txs.isEmpty { router.showTour = true } }
         .task { CardAutopay.run(ctx: ctx) }
         .environment(router)

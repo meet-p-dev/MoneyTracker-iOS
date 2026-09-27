@@ -50,6 +50,7 @@ enum TapSettle {
         var merchant: String, name: String, card: String
         var typed: String, text: String
         var result: String
+        var src: String? = nil          // "note" for bank notifications (nil = Wallet tap, older entries)
     }
     static func readLog() -> [LogEntry] {
         guard let d = try? Data(contentsOf: logURL), let l = try? JSONDecoder().decode([LogEntry].self, from: d) else { return [] }
@@ -61,6 +62,54 @@ enum TapSettle {
         if let d = try? JSONEncoder().encode(l) { try? d.write(to: logURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]) }
     }
     static func clearLog() { try? FileManager.default.removeItem(at: logURL) }
+
+    /// The same purchase seen twice: a Wallet tap and the bank's own notification, within 15
+    /// minutes, same amount, a similar shop name. The second one is folded into the first.
+    private static func twin(of c: Capture, _ ctx: ModelContext) -> Capture? {
+        let from = c.at.addingTimeInterval(-900), to = c.at.addingTimeInterval(900)
+        let near = (try? ctx.fetch(FetchDescriptor<Capture>(predicate: #Predicate { $0.at > from && $0.at < to }))) ?? []
+        return near.first { o in
+            o.id != c.id && o.src != c.src && o.cents == c.cents && c.cents > 0 && o.dir == c.dir && o.state != "merged" && o.state != "dismissed"
+                && (o.accountId.isEmpty || c.accountId.isEmpty || o.accountId == c.accountId)
+                && (o.merchant.isEmpty || c.merchant.isEmpty
+                    || Fusion.similarity(tap: o.merchant, bank: c.merchant, bankHead: Fusion.head(c.merchant), memory: memory) >= 0.5)
+        }
+    }
+
+    // ── A bank notification arrives (iOS 27 Notification automation) ──
+    @discardableResult
+    static func intakeNote(ctx: ModelContext, app: String?, title: String?, subtitle: String?, body: String?, at: Date = Date()) -> Capture? {
+        let a = (app ?? "").trimmed, t = (title ?? "").trimmed, s = (subtitle ?? "").trimmed, b = (body ?? "").trimmed
+        let source = a.isEmpty ? t : a
+        func log(_ result: String) {
+            appendLog(LogEntry(at: at, merchant: t, name: s, card: source, typed: "", text: b, result: result, src: "note"))
+        }
+        guard let p = NoteParser.parse(app: a, title: t, subtitle: s, body: b) else { log("Not a payment"); return nil }
+        let cutoff = at.addingTimeInterval(-120)
+        let recent = (try? ctx.fetch(FetchDescriptor<Capture>(predicate: #Predicate { $0.at > cutoff }))) ?? []
+        if let dup = recent.first(where: { $0.src == "note" && $0.card == source && $0.cents == p.cents && $0.merchant == p.merchant }) {
+            log("Same notification again, ignored"); return dup
+        }
+        let accounts = (try? ctx.fetch(FetchDescriptor<Account>())) ?? []
+        let mapped = memory.cardMap[source].flatMap { id in accounts.contains { $0.id == id } ? id : nil } ?? ""
+        let cap = Capture(at: at, cents: p.cents, cur: p.cur ?? "", merchant: p.merchant, name: "", card: source, accountId: mapped)
+        cap.src = "note"; cap.dir = p.dir
+        cap.raw = "app=\(a) | title=\(t) | subtitle=\(s) | body=\(b)"
+        if let first = twin(of: cap, ctx) {
+            cap.state = "merged"; cap.linkId = first.id; cap.reason = "Same payment as the Wallet tap"
+            ctx.insert(cap); try? ctx.save()
+            log("Same payment as a Wallet tap"); return cap
+        }
+        ctx.insert(cap)
+        run(ctx: ctx)
+        switch cap.state {
+        case "added": log(p.dir == "in" ? "Added as money received" : "Added as an expense")
+        case "settled": log("Matched a bank row")
+        case "check": log("Waiting for your check")
+        default: log(mapped.isEmpty ? "App not linked to an account yet" : "Pending")
+        }
+        return cap
+    }
 
     // ── A tap arrives ──
     @discardableResult
@@ -81,6 +130,12 @@ enum TapSettle {
         let mapped = memory.cardMap[c].flatMap { id in accounts.contains { $0.id == id } ? id : nil } ?? ""
         let cap = Capture(at: at, cents: cents, cur: parsed.cur ?? "", merchant: m, name: n, card: c, accountId: mapped)
         cap.raw = "merchant=\(m) | name=\(n) | card=\(c) | amount=\(typed) | text=\(text ?? "")"
+        if let first = twin(of: cap, ctx) {
+            cap.state = "merged"; cap.linkId = first.id; cap.reason = "Same payment as the bank's notification"
+            ctx.insert(cap); try? ctx.save()
+            appendLog(LogEntry(at: at, merchant: m, name: n, card: c, typed: typed, text: text ?? "", result: "Same payment as a bank notification"))
+            return cap
+        }
         ctx.insert(cap)
         run(ctx: ctx)
         let result: String
@@ -103,12 +158,16 @@ enum TapSettle {
     private static func promoteIfHandManaged(_ c: Capture, _ accounts: [Account], _ ctx: ModelContext) {
         guard c.state == "pending", !needsAmount(c, accounts), c.cents > 0,
               let a = accounts.first(where: { $0.id == c.accountId }), !a.isSynced else { return }
-        let cat = c.categoryId.isEmpty ? (Merchants.category(c.title) ?? "other") : c.categoryId
-        let t = Txn(id: "tap-" + c.id, type: "expense", amount: c.amount, merchant: c.title, categoryId: cat,
-                    accountId: a.id, date: c.day)
+        let t = Txn(id: "tap-" + c.id, type: c.dir == "in" ? "credit" : "expense", amount: c.amount, merchant: c.title,
+                    categoryId: category(c), accountId: a.id, date: c.day)
         t.source = "tap"
         ctx.insert(t)
         c.state = "added"; c.linkId = t.id; c.reason = "Added to \(a.name)"
+    }
+    /// Money in is never counted as income by itself: it comes in as "Received" until you say what it is.
+    private static func category(_ c: Capture) -> String {
+        if c.dir == "in" { return "other" }
+        return c.categoryId.isEmpty ? (Merchants.category(c.title) ?? "other") : c.categoryId
     }
 
     // ── One matching pass ──
@@ -153,7 +212,7 @@ enum TapSettle {
 
     private static func settle(_ c: Capture, _ r: Row, p: Double, reason: String, kind: Fusion.Kind, lag: Int) {
         c.state = "settled"; c.linkId = r.id; c.p = p; c.reason = reason
-        if !c.categoryId.isEmpty && LearningStore.shared.decision(r.id) == nil {
+        if c.dir == "out" && !c.categoryId.isEmpty && LearningStore.shared.decision(r.id) == nil {
             LearningStore.shared.setDecision(Decision(type: "expense", category: c.categoryId), for: r.id)
             c.wroteDecision = true
         }
@@ -244,9 +303,8 @@ enum TapSettle {
             c.state = "kept"; c.reason = "Moved to \(account.name)"
             try? ctx.save(); return
         }
-        let cat = c.categoryId.isEmpty ? (Merchants.category(c.title) ?? "other") : c.categoryId
-        let t = Txn(id: "tap-" + c.id, type: "expense", amount: c.amount, merchant: c.title, categoryId: cat,
-                    accountId: account.id, date: c.day)
+        let t = Txn(id: "tap-" + c.id, type: c.dir == "in" ? "credit" : "expense", amount: c.amount, merchant: c.title,
+                    categoryId: category(c), accountId: account.id, date: c.day)
         t.source = "tap"
         ctx.insert(t)
         c.state = "kept"; c.linkId = t.id; c.reason = "Added to \(account.name)"

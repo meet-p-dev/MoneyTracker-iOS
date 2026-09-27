@@ -25,6 +25,7 @@ struct Evidence: Hashable {
     var merchant: String
     var card: String
     var accountId: String?      // nil = card not linked to an account yet
+    var dir: String = "out"     // "in" for money a bank notification says came in
 }
 
 /// What the matcher learns. Local only (never synced): card names can contain personal names.
@@ -200,9 +201,11 @@ enum Fusion {
         return l.sorted()[l.count / 2]
     }
 
-    /// Bank rows a tap can settle against: synced money out that isn't a card bill.
-    static func bankRows(_ rows: [Row]) -> [Row] {
-        rows.filter { r in
+    /// Bank rows evidence can settle against: synced money out that isn't a card bill
+    /// (or, for money a notification says came in, synced money in).
+    static func bankRows(_ rows: [Row], dir: String = "out") -> [Row] {
+        if dir == "in" { return rows.filter { $0.isBank && $0.isIn && !$0.cardPay } }
+        return rows.filter { r in
             r.isBank && (r.type == "expense" || r.type == "debit") && !r.cardPay
                 && !CardMath.looksLikeCardBill("\(r.merchant) \(r.notes)".lowercased())
         }
@@ -243,6 +246,8 @@ enum Fusion {
                     kind = .fx; amountTerm = abs(r - 1) <= 0.03 ? 2.5 : 1.5
                 } else if abs(ct - ce) <= 1 {
                     kind = .exact; amountTerm = ct == ce ? 4.0 : 3.5
+                } else if e.dir == "in" {
+                    continue                                    // money in: no tips, no holds
                 } else if isTipProne(tapHead, e.merchant, t, memory), ct > ce, Double(ct) <= 1.25 * Double(ce) + 100 {
                     kind = .tip; amountTerm = memory.tipHeads.contains(tapHead) ? 3.0 : 2.0
                 } else if isHoldProne(tapHead, e.merchant, t, memory), ct > 0, ct <= max(ce, 25_000), m >= 0.8 {
@@ -305,12 +310,14 @@ enum Fusion {
     ///   - coverage: accountId → last local day the feed is complete through.
     static func run(evidence: [Evidence], rows: [Row], taken: Set<String>, feedAccounts: Set<String>,
                     coverage: [String: String], memory: FusionMemory, home: String) -> Outcome {
-        let bank = bankRows(rows).filter { !taken.contains($0.id) }
+        let bankOut = bankRows(rows).filter { !taken.contains($0.id) }
+        let bankIn = bankRows(rows, dir: "in").filter { !taken.contains($0.id) }
+        let bank = bankOut + bankIn
         let evidence = evidence.sorted { ($0.at ?? .distantPast, $0.id) < ($1.at ?? .distantPast, $1.id) }
         var cands: [String: [Candidate]] = [:]
         var all: [Candidate] = []
         for e in evidence {
-            let c = candidates(e, bank, feedAccounts: feedAccounts, memory: memory, home: home)
+            let c = candidates(e, e.dir == "in" ? bankIn : bankOut, feedAccounts: feedAccounts, memory: memory, home: home)
             cands[e.id] = c; all += c
         }
         let order = Dictionary(uniqueKeysWithValues: evidence.enumerated().map { ($1.id, $0) })
