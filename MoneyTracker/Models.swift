@@ -73,7 +73,8 @@ final class Txn {
     var splitPeople: Int
     var splitSettled: Bool
     var isBank: Bool = false  // synced from the bank (web `_bank`)
-    var source: String = ""   // "" typed or synced · "tap" added from an Apple Pay tap
+    var source: String = ""   // "" typed or synced · "tap" from an Apple Pay tap · "file" from a bank statement
+    var fp: String = ""       // a statement row's fingerprint, so importing the same file twice adds nothing
 
     init(id: String = UUID().uuidString, type: String, amount: Double, merchant: String,
          categoryId: String, accountId: String, toAccountId: String = "", notes: String = "",

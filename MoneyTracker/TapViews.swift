@@ -242,7 +242,7 @@ struct ApplePayView: View {
             Section {
                 step(1, "Open Shortcuts, go to Automation and tap +.")
                 step(2, "Choose Wallet. Pick your payment cards and choose Run Immediately.")
-                step(3, "Add the action \"Log Apple Pay payment\" from MoneyTrack.")
+                step(3, "Add the action \"Log a Wallet payment\" from MoneyTrack.")
                 step(4, "Fill its fields from the Shortcut Input: Merchant, Amount, Card, and Name. Set each one directly, not through another shortcut.")
                 step(5, "Pay once. The payment shows up below.")
                 Link(destination: URL(string: "shortcuts://")!) { Label("Open Shortcuts", systemImage: "arrow.up.forward.app") }
@@ -278,7 +278,7 @@ struct ApplePayView: View {
                         if !c.reason.isEmpty { Text(c.reason).font(.caption2).foregroundStyle(.secondary) }
                     }
                     .swipeActions {
-                        if c.state == "settled" {
+                        if c.state == "settled" && !c.linkId.hasPrefix("tap-") {
                             Button("Undo") { withAnimation { TapSettle.undo(c, ctx: ctx) } }.tint(.orange)
                         } else if c.state == "added" || c.state == "kept" {
                             Button("Remove", role: .destructive) { withAnimation { TapSettle.undo(c, ctx: ctx) } }

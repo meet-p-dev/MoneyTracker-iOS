@@ -14,6 +14,7 @@ included automatically.
 | `JSRegex.swift` | — | JavaScript-style `\b` on top of ICU regex |
 | `BackupCodec.swift` | `doExport`/`doImport` | Backup format 2.6 |
 | `Fmt.swift`, `JSONValue.swift` | `lib/utils.js` | Regions, money formatting, amount parsing, JSON values |
+| `Statement.swift` | — (iOS only) | Statement Drop: CSV (Revolut, Sparkasse, DKB, ING, N26, any bank with date + amount), camt.052/053, MT940 parsers; `StatementPlan` (dedupe by fingerprint, tap settles, typed-row matches, transfer twins, cross-check on bank-synced accounts); `Ledger.balance(of:on:)` |
 | `Fusion.swift` | — (iOS only) | Tap & Settle matcher: links an Apple Pay tap to the bank row that books it later. Gates, log-odds score, one-to-one assignment, orphans, learning |
 
 ## Data & services
@@ -27,7 +28,10 @@ included automatically.
   bank sync and app launch, your answers (confirm, reject, undo, not charged, paid another
   way), card-to-account links, and the "What Wallet sent" log. Local only: `fusion.json` and
   `wallet-log.json` in Application Support, never synced.
-- `WalletIntent.swift`: the "Log Apple Pay payment" App Intent (background, no dialog) that a
+- `StatementImport.swift`: applies a `StatementPlan` (file rows become bank rows `st-…` with
+  `Txn.fp`; taps and typed rows are updated in place, the bank's amount and date win),
+  remembers which account a file belongs to, checks the closing balance.
+- `WalletIntent.swift`: the "Log a Wallet payment" App Intent (no "Apple" in intent text, App Store rule 90626) (background, no dialog) that a
   Shortcuts Wallet automation calls. Uses `AppData.container`, shared with the app.
 
 ### Tap & Settle rules
@@ -50,6 +54,8 @@ included automatically.
 - `UI/Tips.swift`: the two TipKit tips.
 - `TapViews.swift`: the Apple Pay check sheet ("Same purchase?", link a card, add an amount,
   not booked), Settings → Apple Pay payments, and the pending row on Home.
+- `StatementViews.swift`: Settings → Import a bank statement (UIKit document picker: a second
+  `.fileImporter` on Settings is ignored), the preview and the balance check.
 - Screens:
   - `HomeView`, `ActivityView`, `InsightsView` (with `CategoryDrill`), `WalletView`,
     `CardDetailView`

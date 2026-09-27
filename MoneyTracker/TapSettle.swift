@@ -180,6 +180,7 @@ enum TapSettle {
     static func confirm(_ c: Capture, bankId: String? = nil, ctx: ModelContext) {
         let id = bankId ?? c.linkId
         guard let r = row(id, ctx) else { return }
+        if bankId != nil { deleteTapTxn(c, ctx) }   // the bank row replaces the tap's own expense
         settle(c, r, p: 1, reason: "You confirmed it", kind: kind(c, r), lag: CardMath.daysBetween(c.day, r.date))
         saveMemory(); try? ctx.save()
         run(ctx: ctx)
@@ -205,14 +206,44 @@ enum TapSettle {
         saveMemory(); try? ctx.save()
         run(ctx: ctx)
     }
-    /// "Not charged" (declined, cancelled) — out of every total.
+    /// "Not charged" (declined, cancelled) — out of every total. A tap that had become an
+    /// expense on a hand-managed account takes that expense with it.
     static func dismiss(_ c: Capture, ctx: ModelContext) {
+        deleteTapTxn(c, ctx)
         c.state = "dismissed"; c.linkId = ""; c.reason = "Not charged"
         try? ctx.save()
+    }
+    /// The expense a tap became, while it's still only the tap's (not confirmed by a statement).
+    private static func tapTxn(_ c: Capture, _ ctx: ModelContext) -> Txn? {
+        guard !c.linkId.isEmpty else { return nil }
+        return try? ctx.fetch(FetchDescriptor<Txn>()).first { $0.id == c.linkId && $0.source == "tap" }
+    }
+    private static func deleteTapTxn(_ c: Capture, _ ctx: ModelContext) {
+        if let t = tapTxn(c, ctx) { LearningStore.shared.forget(t.id); ctx.delete(t) }
+    }
+
+    // ── Statement Drop ──
+    /// A statement row confirmed this tap's expense (already updated in place by the import).
+    static func settledByFile(captureId: String, txn: Txn, kind: Fusion.Kind, lag: Int, reason: String, ctx: ModelContext) {
+        guard let c = try? ctx.fetch(FetchDescriptor<Capture>()).first(where: { $0.id == captureId }) else { return }
+        c.state = "settled"; c.linkId = txn.id; c.p = 1; c.reason = "Confirmed by your statement"
+        Fusion.learn(&memory, c.evidence, txn.row, kind: kind, lag: lag, home: home)
+        saveMemory()
+    }
+    /// Taps inside a statement's dates that the statement doesn't contain.
+    static func markOrphans(_ ids: [String], ctx: ModelContext) {
+        guard !ids.isEmpty else { return }
+        let set = Set(ids)
+        for c in (try? ctx.fetch(FetchDescriptor<Capture>())) ?? [] where set.contains(c.id) { c.state = "orphan" }
     }
     /// "Paid another way": the tap becomes an expense on an account you manage by hand.
     static func keep(_ c: Capture, on account: Account, ctx: ModelContext) {
         guard !account.isSynced, c.cents > 0 else { return }
+        if let t = tapTxn(c, ctx) {             // it was already an expense: move it
+            t.accountId = account.id
+            c.state = "kept"; c.reason = "Moved to \(account.name)"
+            try? ctx.save(); return
+        }
         let cat = c.categoryId.isEmpty ? (Merchants.category(c.title) ?? "other") : c.categoryId
         let t = Txn(id: "tap-" + c.id, type: "expense", amount: c.amount, merchant: c.title, categoryId: cat,
                     accountId: account.id, date: c.day)

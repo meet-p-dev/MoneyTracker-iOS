@@ -42,7 +42,8 @@ struct SettingsView: View {
                 } footer: { Text("Uses the same account as the web app.") }
                 Section {
                     NavigationLink { ApplePayView() } label: { Label("Apple Pay payments", systemImage: "wave.3.right") }
-                } footer: { Text("Log in-store Apple Pay payments by themselves.") }
+                    StatementImportButton()
+                } footer: { Text("Log in-store Apple Pay payments by themselves, and bring in your bank's statements (CSV, camt or MT940). Everything stays on this iPhone.") }
                 Section("Data backup") {
                     Button {
                         do {

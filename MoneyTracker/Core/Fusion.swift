@@ -130,10 +130,10 @@ enum Fusion {
 
     // ── What a bank row tells us ──
 
-    private static let cardRe = try! NSRegularExpression(pattern: #"\b(girocard|debitk|kartenzahlung|visa|mastercard|apple ?pay|google ?pay)\b"#)
+    private static let cardRe = try! NSRegularExpression(pattern: #"\b(girocard|debitk|kartenzahlung|visa|mastercard|apple ?pay|google ?pay|card_payment)\b"#)
     private static let notCardRe = try! NSRegularExpression(pattern: #"\b(mref|cred|lastschrift|dauerauftrag|ueberweisung|überweisung|sepa-?basis)\b"#)
     private static let timeRe = try! NSRegularExpression(pattern: #"(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})"#)
-    private static let tipRe = try! NSRegularExpression(pattern: #"\b(taxi|cab|uber|free ?now|bolt|friseur|salon|bar|kneipe|lieferando|wolt)\b"#)
+    private static let tipRe = try! NSRegularExpression(pattern: #"\b(taxi|cab|uber|free ?now|bolt|friseur|salon|bar|kneipe|lieferando|wolt|pizzeria|ristorante|osteria|trattoria|taverna|restaurant|gaststaette|gasthaus|brauhaus|biergarten|cafe|bistro|imbiss|kebab|sushi|burger)\b"#)
     private static let holdRe = try! NSRegularExpression(pattern: #"\b(tankstelle|aral|shell|esso|total|jet|agip|omv|hotel|hostel|sixt|europcar|hertz|avis|ladestation|ionity|enbw|tesla|charging|parkhaus)\b"#)
     private static func has(_ re: NSRegularExpression, _ s: String) -> Bool {
         re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil

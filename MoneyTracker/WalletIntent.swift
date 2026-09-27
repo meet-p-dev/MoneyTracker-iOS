@@ -6,8 +6,9 @@ import SwiftData
 // into it: Merchant, Amount, Card or Pass, and Name. Passing the whole transaction through
 // another shortcut loses these fields.
 struct LogWalletPaymentIntent: AppIntent {
-    static let title: LocalizedStringResource = "Log Apple Pay payment"
-    static let description = IntentDescription("Adds an Apple Pay payment to MoneyTrack. Use it in a Wallet automation.")
+    // App Store Connect rejects intent titles and descriptions that contain "Apple" (error 90626).
+    static let title: LocalizedStringResource = "Log a Wallet payment"
+    static let description = IntentDescription("Adds a Wallet payment to MoneyTrack. Use it in a Wallet automation.")
     static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Merchant") var merchant: String?
